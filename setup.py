@@ -24,12 +24,12 @@ setup(
     name='aet.consumer',
     author='Shawn Sarwar',
     author_email="shawn.sarwar@ehealthafrica.org",
-    decription='''A library to consume messages from Kafka with added functionality based on
+    description='''A library to consume messages from Kafka with added functionality based on
         Aether's schema metadata''',
-    version='0.9.0',
+    version='0.9.1',
     setup_requires=['pytest-runner'],
     tests_require=['pytest', 'mock'],
-    url='http://github.com/eHealthAfrica/aether',
+    url='https://github.com/eHealthAfrica/aether-consumer-sdk',
     install_requires=[
         "kafka",
         "jsonpath_ng",
