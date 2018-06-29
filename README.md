@@ -11,7 +11,7 @@ The SDK is built on top of the standard [kafka-python] library. The entire API r
 ## Deserialization with Spavro
 
 There are many Avro libraries available for python. [Spavro] uses the syntax of the official python2 Avro library, while adding compatibility for Python3, and providing a 15x (de)serialization speed increase via C extensions. To support this functionality, we provide a ```poll_and_deserialize(timeout_ms, max_records)``` method, which mirrors the basic functionality of the ```poll()``` method from the kafka-python library, while providing deserialized messages in the following format:
-```json
+```python
 {
     "topic:{topic}-partition:{partition}" : [
         {
@@ -97,7 +97,7 @@ This message will be emitted.
 {
     "id": "passing_message",
     "date": "2018-07-01",
-    "record_type': "routine_vaccination"
+    "record_type": "routine_vaccination"
 }
 ```
 This message will _not_ be emitted.
@@ -105,7 +105,7 @@ This message will _not_ be emitted.
 {
     "id": "failing_message",
     "date": "2018-07-01",
-    "record_type': "postpartum_followup"
+    "record_type": "postpartum_followup"
 }
 ```
 
