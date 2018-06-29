@@ -5,6 +5,9 @@ Aether Output Connectors are a powerful way of feeding foreign systems with data
   - Value based filtering of whole messages.
   - Exclusion of fields from a read message based on data classification
 
+_To get started, grab the package from pip:_
+```pip install aet.consumer```
+
 # SDK Features
 The SDK is built on top of the standard [kafka-python] library. The entire API remains intact with the following modifications.
 
