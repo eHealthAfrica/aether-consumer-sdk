@@ -10,7 +10,7 @@
 
 flake8
 jsonpath_ng
-kafka
+kafka-python
 mock
 pytest
 pytest-runner

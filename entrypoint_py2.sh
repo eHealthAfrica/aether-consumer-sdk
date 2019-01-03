@@ -53,6 +53,7 @@ test_coverage() {
 
     rm -R ./*.egg*
     rm -R .pytest_cache
+    rm -rf tests/__pycache__
 }
 
 

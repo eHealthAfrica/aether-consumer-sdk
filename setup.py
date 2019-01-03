@@ -26,12 +26,12 @@ setup(
     author_email="shawn.sarwar@ehealthafrica.org",
     description='''A library to consume messages from Kafka with added functionality based on
         Aether's schema metadata''',
-    version='0.9.1',
+    version='1.0.0',
     setup_requires=['pytest-runner'],
     tests_require=['pytest', 'mock'],
     url='https://github.com/eHealthAfrica/aether-consumer-sdk',
     install_requires=[
-        "kafka",
+        "kafka-python",
         "jsonpath_ng",
         "spavro"
     ],
