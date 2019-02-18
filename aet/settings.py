@@ -62,15 +62,20 @@ class Settings(dict):
 
 
 def check_required_fields(conf, fields):
+    fields = json.loads(fields)
     missing = []
+    found = []
     for f in fields:
         if not conf.get(f):
             missing.append(f)
+        else:
+            found.append(f)
     assert missing == [], 'Required fields are missing: %s' % (missing)
+    return found
 
 
 CONSUMER_CONFIG = Settings(file_path=os.environ.get('CONSUMER_CONFIG_PATH', None))
 KAFKA_CONFIG = Settings(file_path=os.environ.get('KAFKA_CONFIG_PATH', None))
 
-check_required_fields(CONSUMER_CONFIG, os.environ.get('REQUIRED_CONSUMER_CONFIG', []))
-check_required_fields(KAFKA_CONFIG, os.environ.get('REQUIRED_KAFKA_CONFIG', []))
+check_required_fields(CONSUMER_CONFIG, os.environ.get('REQUIRED_CONSUMER_CONFIG', '[]'))
+check_required_fields(KAFKA_CONFIG, os.environ.get('REQUIRED_KAFKA_CONFIG', '[]'))

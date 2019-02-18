@@ -18,6 +18,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import requests
+
 from . import *  # noqa
 from aet.kafka import KafkaConsumer
 
@@ -239,3 +241,26 @@ def test_msk_msg_custom_map(offline_consumer,
     mask = offline_consumer.get_mask_from_schema(sample_schema_top_secret)
     masked = mask(sample_message_top_secret)
     assert(len(masked.keys()) == (expected_count)), ("%s %s" % (emit_level, masked))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("call,result", [
+                        ('jobs/delete', True),
+                        ('jobs/get', {}),
+                        ('jobs/list', {}),
+                        ('healthcheck', 'healthy')
+])
+def test_api_get_calls(call, result, mocked_api):
+    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
+    pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
+    auth = requests.auth.HTTPBasicAuth(user, pw)
+    port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
+    url = f'http://localhost:{port}/{call}'
+    res = requests.get(url, auth=auth)
+    res.raise_for_status()
+    try:
+        val = res.json()
+    except json.decoder.JSONDecodeError:
+        val = res.text
+    finally:
+        assert(val == result)

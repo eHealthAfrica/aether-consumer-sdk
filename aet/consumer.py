@@ -34,6 +34,7 @@ class BaseConsumer(object):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         self.task = TaskHelper()
+        self.children = []
 
     # Control API
 

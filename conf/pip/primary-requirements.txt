@@ -17,6 +17,5 @@ mock
 pytest
 pytest-runner
 requests
-responses
 spavro
 webtest

@@ -11,11 +11,14 @@
 atomicwrites==1.2.1
 attrs==17.4.0
 beautifulsoup4==4.7.1
+certifi==2018.11.29
+chardet==3.0.4
 Click==7.0
 decorator==4.3.0
 entrypoints==0.3
 flake8==3.7.5
 Flask==1.0.2
+idna==2.8
 itsdangerous==1.1.0
 Jinja2==2.10
 jsonpath-ng==1.4.3
@@ -33,9 +36,11 @@ pycodestyle==2.5.0
 pyflakes==2.1.0
 pytest==4.2.1
 pytest-runner==4.4
+requests==2.21.0
 six==1.11.0
 soupsieve==1.8
 spavro==1.1.21
+urllib3==1.24.1
 waitress==1.2.1
 WebOb==1.8.5
 WebTest==2.0.33

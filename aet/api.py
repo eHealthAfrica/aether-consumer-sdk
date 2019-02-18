@@ -32,7 +32,8 @@ class APIServer(object):
         self.consumer = consumer
 
     def serve(self):
-        self.app = Flask(self.settings.get('consumer_name'))  # noqa
+        name = self.settings.get('consumer_name')
+        self.app = Flask(name)  # noqa
         try:
             handler = self.app.logger.handlers[0]
         except IndexError:

@@ -60,7 +60,7 @@ class MockTaskHelper(object):
         return True
 
     def get(self, _id, type):
-        return {}
+        return '{}'
 
     def list(self, type=None):
         return []
@@ -70,6 +70,7 @@ class MockConsumer(BaseConsumer):
     def __init__(self, CON_CONF, KAFKA_CONF):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
+        self.children = []
         self.task = MockTaskHelper()
 
 
@@ -216,5 +217,12 @@ def offline_consumer():
 @pytest.mark.unit
 @pytest.fixture(scope="module")
 def mocked_api():
-    api = APIServer(MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG))
-    return api
+    api = APIServer(
+        MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG),
+        settings.CONSUMER_CONFIG
+    )
+    api.serve()
+    yield api
+    # teardown
+    api.stop()
+    sleep(.5)
