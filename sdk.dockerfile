@@ -1,4 +1,4 @@
-FROM python:2.7
+FROM python:3.6
 
 ################################################################################
 ## setup container
@@ -13,7 +13,7 @@ WORKDIR /code
 
 COPY ./conf/pip /code/conf/pip
 
-RUN pip install -r /code/conf/pip/requirements.py2.txt
+RUN pip3 install -r /code/conf/pip/requirements.txt
 
 COPY ./ /code
 
@@ -25,4 +25,4 @@ COPY ./ /code
 RUN useradd -ms /bin/false aether
 RUN chown -R aether: /code
 
-ENTRYPOINT ["/code/entrypoint_py2.sh"]
+ENTRYPOINT ["/code/entrypoint.sh"]

@@ -18,7 +18,6 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-
 set -Eeuo pipefail
 
 
@@ -46,13 +45,13 @@ test_flake8() {
 }
 
 test_coverage() {
-    # Python2 Tests
-    python setup.py test
+    # Python3 Tests
+    python3 setup.py test
 
     cat /code/conf/extras/good_job.txt
-
     rm -R ./*.egg*
     rm -R .pytest_cache
+    rm -rf .eggs
     rm -rf tests/__pycache__
 }
 
@@ -73,10 +72,10 @@ case "$1" in
     pip_freeze )
 
         rm -rf /tmp/env
-        pip install -f ./conf/pip/dependencies -r ./conf/pip/primary-requirements.py2.txt --upgrade
+        pip3 install -f ./conf/pip/dependencies -r ./conf/pip/primary-requirements.txt --upgrade
 
-        cat /code/conf/pip/requirements_header.txt | tee conf/pip/requirements.py2.txt
-        pip freeze --local | grep -v appdir | tee -a conf/pip/requirements.py2.txt
+        cat /code/conf/pip/requirements_header.txt | tee conf/pip/requirements.txt
+        pip3 freeze --local | grep -v appdir | tee -a conf/pip/requirements.txt
     ;;
 
     test)
@@ -93,7 +92,18 @@ case "$1" in
     ;;
 
     build)
-        echo "Please Build from the Python3 Container."
+        # remove previous build if needed
+        rm -rf dist
+        rm -rf build
+        rm -rf .eggs
+        rm -rf aet.consumer.egg-info
+
+        # create the distribution
+        python setup.py bdist_wheel --universal
+
+        # remove useless content
+        rm -rf build
+        rm -rf aet.consumer.egg-info
     ;;
 
     help)
