@@ -74,7 +74,7 @@ class APIServer(object):
         # URLS configured here
         self.register('jobs/add', self.add_job, methods=['POST'])
         self.register('jobs/delete', self.remove_job)
-        self.register('jobs/update', self.add_job)
+        self.register('jobs/update', self.add_job, methods=['POST'])
         self.register('jobs/validate', self.validate_job)
         self.register('jobs/get', self.get_job)
         self.register('jobs/list', self.list_jobs)

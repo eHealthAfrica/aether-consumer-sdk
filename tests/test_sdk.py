@@ -264,3 +264,26 @@ def test_api_get_calls(call, result, mocked_api):
         val = res.text
     finally:
         assert(val == result)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("call,result,body", [
+                        ('jobs/add', False, {'a': 'b'}),
+                        ('jobs/update', False, {'a': 'b'}),
+                        ('jobs/add', True, {}),
+                        ('jobs/update', True, {})
+])
+def test_api_post_calls(call, result, body, mocked_api):
+    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
+    pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
+    auth = requests.auth.HTTPBasicAuth(user, pw)
+    port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
+    url = f'http://localhost:{port}/{call}'
+    res = requests.post(url, auth=auth, json=body)
+    res.raise_for_status()
+    try:
+        val = res.json()
+    except json.decoder.JSONDecodeError:
+        val = res.text
+    finally:
+        assert(val == result), f'{call} | {result} | {body}'

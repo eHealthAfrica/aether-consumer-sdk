@@ -67,11 +67,27 @@ class MockTaskHelper(object):
 
 
 class MockConsumer(BaseConsumer):
+
+    PERMISSIVE_SCHEMA = {  # should match anything
+        'type': 'object',
+        'additionalProperties': True,
+        'properties': {
+        }
+    }
+
+    STRICT_SCHEMA = {  # should match nothing but empty brackets -> {}
+        'type': 'object',
+        'additionalProperties': False,
+        'properties': {
+        }
+    }
+
     def __init__(self, CON_CONF, KAFKA_CONF):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         self.children = []
         self.task = MockTaskHelper()
+        self.schema = MockConsumer.STRICT_SCHEMA
 
 
 def send_messages(producer, name, schema, messages):

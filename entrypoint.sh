@@ -44,17 +44,26 @@ test_flake8() {
     flake8 /code/. --config=/code/conf/extras/flake8.cfg
 }
 
-test_coverage() {
-    # Python3 Tests
-    python3 setup.py test
-
+test_integration() {
+    echo 'Running Integration Tests...'
+    export PYTHONDONTWRITEBYTECODE=1 
+    pytest -m integration -p no:cacheprovider  # disable __pycache__ which pollutes local FS
     cat /code/conf/extras/good_job.txt
-    rm -R ./*.egg*
-    rm -R .pytest_cache
-    rm -rf .eggs
-    rm -rf tests/__pycache__
 }
 
+test_unit() {
+    echo 'Running Unit Tests...'
+    export PYTHONDONTWRITEBYTECODE=1 
+    pytest -m unit -p no:cacheprovider  # disable __pycache__ which pollutes local FS
+    cat /code/conf/extras/good_job.txt
+}
+
+# test_cleanup(){
+#     rm -R ./*.egg*
+#     rm -R .pytest_cache
+#     rm -rf .eggs
+#     rm -rf tests/__pycache__   
+# }
 
 case "$1" in
     bash )
@@ -80,7 +89,18 @@ case "$1" in
 
     test)
         test_flake8
-        test_coverage "${@:2}"
+        test_unit
+        test_integration
+    ;;
+
+    test_unit)
+        test_flake8
+        test_unit
+    ;;
+
+    test_integration)
+        test_flake8
+        test_integration
     ;;
 
     test_lint)

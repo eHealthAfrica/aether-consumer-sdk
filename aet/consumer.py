@@ -19,7 +19,7 @@
 # under the License.
 
 import json
-from jsonschema import validate
+import jsonschema
 
 from .api import APIServer
 from .logger import LOG
@@ -58,10 +58,16 @@ class BaseConsumer(object):
 
     def validate_job(self, job, schema=None):
         schema = schema if schema else self.schema
-        validate(job, schema)  # Throws ValidationErrors
+        try:
+            jsonschema.validate(job, schema)  # Throws ValidationErrors
+            return True
+        except jsonschema.exceptions.ValidationError as err:
+            LOG.debug(err)
+            return False
 
     def add_job(self, job):
-        self.validate_job(job)
+        if not self.validate_job(job):
+            return False
         return self.task.add(job, type='job')
 
     def job_exists(self, _id):
