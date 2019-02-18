@@ -26,16 +26,16 @@ show_help() {
     echo """
     Commands
     ----------------------------------------------------------------------------
-    bash          : run bash
-    build         : build python wheel of library in /dist
-    eval          : eval shell command
-    manage        : invoke django manage.py commands
+    bash                : run bash
+    build               : build python wheel of library in /dist
+    eval                : eval shell command
 
-    pip_freeze    : freeze pip dependencies and write to requirements.txt
+    pip_freeze          : freeze pip dependencies and write to requirements.txt
 
-    test          : run tests
-    test_lint     : run flake8 tests
-    test_coverage : run tests with coverage output
+    test                : run tests
+    test_lint           : run flake8 tests
+    test_unit           : run tests with coverage output
+    test_integration    : run tests with coverage output
 
     """
 }
@@ -57,13 +57,6 @@ test_unit() {
     pytest -m unit -p no:cacheprovider  # disable __pycache__ which pollutes local FS
     cat /code/conf/extras/good_job.txt
 }
-
-# test_cleanup(){
-#     rm -R ./*.egg*
-#     rm -R .pytest_cache
-#     rm -rf .eggs
-#     rm -rf tests/__pycache__   
-# }
 
 case "$1" in
     bash )
