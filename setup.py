@@ -33,6 +33,7 @@ setup(
     install_requires=[
         "kafka-python",
         "jsonpath_ng",
+        "jsonschema",
         "spavro"
     ],
     packages=find_packages(),

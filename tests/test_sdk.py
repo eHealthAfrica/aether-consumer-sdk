@@ -18,7 +18,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from . import *
+from . import *  # noqa
 from aet.consumer import KafkaConsumer
 
 # Test Suite contains both unit and integration tests

@@ -9,9 +9,12 @@
 #########################################################################################
 
 flake8
+flask
 jsonpath_ng
+jsonschema
 kafka-python
 mock
 pytest
 pytest-runner
 spavro
+webtest

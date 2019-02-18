@@ -30,7 +30,11 @@ from spavro.datafile import DataFileWriter
 from spavro.io import DatumWriter
 from spavro.schema import parse as ParseSchema
 
-from aet.consumer import KafkaConsumer
+from aet.consumer import BaseConsumer
+from aet.kafka import KafkaConsumer
+from aet.api import APIServer
+from aet import settings
+
 from .assets.schemas import test_schemas
 
 kafka_server = "kafka-test:29092"
@@ -39,6 +43,34 @@ kafka_connection_retry_wait = 6
 # increasing topic_size may cause poll to be unable to get all the messages in one call.
 # needs to be even an if > 100 a multiple of 100.
 topic_size = 500
+
+
+class MockTaskHelper(object):
+
+    def __init__(self):
+        pass
+
+    def add(self, task, type):
+        return True
+
+    def exists(self, _id, type):
+        return True
+
+    def remove(self, _id, type):
+        return True
+
+    def get(self, _id, type):
+        return {}
+
+    def list(self, type=None):
+        return []
+
+
+class MockConsumer(BaseConsumer):
+    def __init__(self, CON_CONF, KAFKA_CONF):
+        self.consumer_settings = CON_CONF
+        self.kafka_settings = KAFKA_CONF
+        self.task = MockTaskHelper()
 
 
 def send_messages(producer, name, schema, messages):
@@ -178,3 +210,11 @@ def offline_consumer():
     # Leave this deepcopy
     consumer._set_config(deepcopy(KafkaConsumer.ADDITIONAL_CONFIG))
     return consumer
+
+
+# API Assets
+@pytest.mark.unit
+@pytest.fixture(scope="module")
+def mocked_api():
+    api = APIServer(MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG))
+    return api
