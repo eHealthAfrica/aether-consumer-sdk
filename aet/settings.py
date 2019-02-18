@@ -66,7 +66,7 @@ def check_required_fields(conf, fields):
     for f in fields:
         if not conf.get(f):
             missing.append(f)
-    assert missing is [], 'Required fields are missing: %s' % (missing)
+    assert missing == [], 'Required fields are missing: %s' % (missing)
 
 
 CONSUMER_CONFIG = Settings(file_path=os.environ.get('CONSUMER_CONFIG_PATH', None))

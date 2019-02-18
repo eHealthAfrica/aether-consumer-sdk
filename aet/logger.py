@@ -28,5 +28,5 @@ handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter(
     '%(asctime)s [Consumer] %(levelname)-8s %(message)s'))
 LOG.addHandler(handler)
-level = logging.getLevelName(CONSUMER_CONFIG['log_level'])
+level = logging.getLevelName(CONSUMER_CONFIG.get('log_level', 'DEBUG'))
 LOG.setLevel(level)

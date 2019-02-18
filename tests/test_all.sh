@@ -32,20 +32,20 @@ function kill_all(){
 
 DC_TEST="docker-compose -f ../docker-compose.yml"
 
-echo "_____________________________________________ TESTING"
-kill_all
-build_container kafka
-build_container zookeeper
-echo "_____________________________________________ Starting Kafka"
-$DC_TEST up -d zookeeper-test kafka-test
+# echo "_____________________________________________ TESTING"
+# kill_all
+# build_container kafka
+# build_container zookeeper
+# echo "_____________________________________________ Starting Kafka"
+# $DC_TEST up -d zookeeper-test kafka-test
 
-# test a clean INGEGRATION TEST container
-echo "_____________________________________________ Starting Python2 Tests"
+# # test a clean INGEGRATION TEST container
+# echo "_____________________________________________ Starting Python2 Tests"
 
-build_container consumer-sdk-py2
-$DC_TEST run consumer-sdk-py2-test test
+# build_container consumer-sdk-py2
+# $DC_TEST run consumer-sdk-py2-test test
 
-echo "_____________________________________________ Finished Test"
+# echo "_____________________________________________ Finished Test"
 
 
 kill_all

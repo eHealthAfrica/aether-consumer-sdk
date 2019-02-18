@@ -201,7 +201,7 @@ def offline_consumer():
         for k, v in pairs.items():
             self.config[k] = v
     # Mock up a usable KafkaConsumer that doesn't use Kafka...
-    with mock.patch('aet.consumer.VanillaConsumer.__init__') as MKafka:
+    with mock.patch('aet.kafka.VanillaConsumer.__init__') as MKafka:
         MKafka.return_value = None  # we need to ignore the call to super in __init__
         consumer = KafkaConsumer()
     consumer._set_config = set_config.__get__(consumer)

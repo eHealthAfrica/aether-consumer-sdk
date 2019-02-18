@@ -19,7 +19,7 @@
 # under the License.
 
 from . import *  # noqa
-from aet.consumer import KafkaConsumer
+from aet.kafka import KafkaConsumer
 
 # Test Suite contains both unit and integration tests
 # Unit tests can be run on their own from the root directory
