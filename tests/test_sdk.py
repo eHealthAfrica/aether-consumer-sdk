@@ -327,6 +327,7 @@ def test_load_schema_validate(mocked_consumer):
 
 @pytest.mark.integration
 @pytest.mark.parametrize("name,args,expected", [
+                        ('remove', ['00001', 'test'], False),
                         ('exists', ['00001', 'test'], False),
                         ('add', [{'id': '00001'}, 'test'], True),
                         ('exists', ['00001', 'test'], True),
@@ -337,3 +338,17 @@ def test_redis_io(name, args, expected, task_helper):
     fn = getattr(task_helper, name)
     res = fn(*args)
     assert(res == expected)
+
+
+@pytest.mark.integration
+def test_redis_get_methods(task_helper):
+    tasks = [
+        {'id': '00001', 'a': 1},
+        {'id': '00002', 'a': 2},
+    ]
+    _type = 'test'
+    for t in tasks:
+        assert(task_helper.add(t, _type) is True)
+        assert(task_helper.exists(t['id'], _type) is True)
+    redis_ids = list(task_helper.list(_type))
+    assert(all([t['id'] in redis_ids for t in tasks]))
