@@ -13,7 +13,7 @@ WORKDIR /code
 
 COPY ./conf/pip /code/conf/pip
 
-RUN pip3 install -f /code/conf/pip/dependencies -r /code/conf/pip/requirements.py3.txt
+RUN pip3 install -r /code/conf/pip/requirements.txt
 
 COPY ./ /code
 
@@ -25,4 +25,4 @@ COPY ./ /code
 RUN useradd -ms /bin/false aether
 RUN chown -R aether: /code
 
-ENTRYPOINT ["/code/entrypoint_py3.sh"]
+ENTRYPOINT ["/code/entrypoint.sh"]

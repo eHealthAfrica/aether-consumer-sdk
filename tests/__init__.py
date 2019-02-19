@@ -30,7 +30,11 @@ from spavro.datafile import DataFileWriter
 from spavro.io import DatumWriter
 from spavro.schema import parse as ParseSchema
 
-from aet.consumer import KafkaConsumer
+from aet.consumer import BaseConsumer
+from aet.kafka import KafkaConsumer
+from aet.api import APIServer
+from aet import settings
+
 from .assets.schemas import test_schemas
 
 kafka_server = "kafka-test:29092"
@@ -39,6 +43,51 @@ kafka_connection_retry_wait = 6
 # increasing topic_size may cause poll to be unable to get all the messages in one call.
 # needs to be even an if > 100 a multiple of 100.
 topic_size = 500
+
+
+class MockTaskHelper(object):
+
+    def __init__(self):
+        pass
+
+    def add(self, task, type):
+        return True
+
+    def exists(self, _id, type):
+        return True
+
+    def remove(self, _id, type):
+        return True
+
+    def get(self, _id, type):
+        return '{}'
+
+    def list(self, type=None):
+        return []
+
+
+class MockConsumer(BaseConsumer):
+
+    PERMISSIVE_SCHEMA = {  # should match anything
+        'type': 'object',
+        'additionalProperties': True,
+        'properties': {
+        }
+    }
+
+    STRICT_SCHEMA = {  # should match nothing but empty brackets -> {}
+        'type': 'object',
+        'additionalProperties': False,
+        'properties': {
+        }
+    }
+
+    def __init__(self, CON_CONF, KAFKA_CONF):
+        self.consumer_settings = CON_CONF
+        self.kafka_settings = KAFKA_CONF
+        self.children = []
+        self.task = MockTaskHelper()
+        self.schema = MockConsumer.STRICT_SCHEMA
 
 
 def send_messages(producer, name, schema, messages):
@@ -169,7 +218,7 @@ def offline_consumer():
         for k, v in pairs.items():
             self.config[k] = v
     # Mock up a usable KafkaConsumer that doesn't use Kafka...
-    with mock.patch('aet.consumer.VanillaConsumer.__init__') as MKafka:
+    with mock.patch('aet.kafka.VanillaConsumer.__init__') as MKafka:
         MKafka.return_value = None  # we need to ignore the call to super in __init__
         consumer = KafkaConsumer()
     consumer._set_config = set_config.__get__(consumer)
@@ -178,3 +227,18 @@ def offline_consumer():
     # Leave this deepcopy
     consumer._set_config(deepcopy(KafkaConsumer.ADDITIONAL_CONFIG))
     return consumer
+
+
+# API Assets
+@pytest.mark.unit
+@pytest.fixture(scope="module")
+def mocked_api():
+    api = APIServer(
+        MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG),
+        settings.CONSUMER_CONFIG
+    )
+    api.serve()
+    yield api
+    # teardown
+    api.stop()
+    sleep(.5)

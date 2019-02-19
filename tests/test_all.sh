@@ -19,11 +19,6 @@
 # under the License.
 set -Eeuo pipefail
 
-function build_container() {
-  echo "_________________________________________________ Building $1 container"
-  $DC_TEST build "$1"-test
-}
-
 function kill_all(){
   echo "_________________________________________________ Killing Containers"
   $DC_TEST kill
@@ -32,32 +27,15 @@ function kill_all(){
 
 DC_TEST="docker-compose -f ../docker-compose.yml"
 
-echo "_____________________________________________ TESTING"
 kill_all
-build_container kafka
-build_container zookeeper
 echo "_____________________________________________ Starting Kafka"
 $DC_TEST up -d zookeeper-test kafka-test
 
-# test a clean INGEGRATION TEST container
-echo "_____________________________________________ Starting Python2 Tests"
+echo "_____________________________________________ Starting Python Tests"
 
-build_container consumer-sdk-py2
-$DC_TEST run consumer-sdk-py2-test test
-
-echo "_____________________________________________ Finished Test"
-
-
-kill_all
-build_container kafka
-build_container zookeeper
-echo "_____________________________________________ Starting Kafka"
-$DC_TEST up -d zookeeper-test kafka-test
-
-echo "_____________________________________________ Starting Python3 Tests"
-
-build_container consumer-sdk-py3
-$DC_TEST run consumer-sdk-py3-test test
+echo "_________________________________________________ Building container"
+$DC_TEST build consumer-test
+$DC_TEST run consumer-test test
 
 echo "_____________________________________________ Finished Test"
 

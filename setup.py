@@ -31,8 +31,10 @@ setup(
     tests_require=['pytest', 'mock'],
     url='https://github.com/eHealthAfrica/aether-consumer-sdk',
     install_requires=[
+        "flask",
         "kafka-python",
         "jsonpath_ng",
+        "jsonschema",
         "spavro"
     ],
     packages=find_packages(),

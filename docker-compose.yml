@@ -34,21 +34,14 @@ services:
       - "moby:127.0.0.1"
 
   # ---------------------------------
-  # Aether Kafka SDK
+  # Aether Consumer SDK
   # ---------------------------------
 
-  consumer-sdk-py3-test:
+  consumer-test:
     build:
       context: .
-      dockerfile: sdk.py3.dockerfile
-
-    volumes:
-      - .:/code
-
-  consumer-sdk-py2-test:
-    build:
-      context: .
-      dockerfile: sdk.py2.dockerfile
-
+      dockerfile: sdk.dockerfile
+    env_file:
+      - tests/test_environment.env
     volumes:
       - .:/code
