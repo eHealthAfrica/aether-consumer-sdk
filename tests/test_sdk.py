@@ -177,6 +177,12 @@ def test_publishing_enum_pass(default_consumer_args,
 #    Unit Tests     #
 #####################
 
+######
+#
+#  KAFKA Consumer
+#
+#####
+
 
 @pytest.mark.unit
 @pytest.mark.parametrize("field_path,field_value,pass_msg,fail_msg", [
@@ -243,6 +249,12 @@ def test_msk_msg_custom_map(offline_consumer,
     assert(len(masked.keys()) == (expected_count)), ("%s %s" % (emit_level, masked))
 
 
+######
+#
+#  API TESTS
+#
+#####
+
 @pytest.mark.unit
 @pytest.mark.parametrize("call,result", [
                         ('jobs/delete', True),
@@ -287,3 +299,41 @@ def test_api_post_calls(call, result, body, mocked_api):
         val = res.text
     finally:
         assert(val == result), f'{call} | {result} | {body}'
+
+
+######
+#
+#  CONSUMER TESTS
+#
+#####
+
+
+@pytest.mark.unit
+def test_load_schema_validate(mocked_consumer):
+    c = mocked_consumer
+    permissive = c.load_schema('/code/conf/schema/permissive.json')
+    strict = c.load_schema('/code/conf/schema/strict.json')
+    job = {'a': 1}
+    assert(c.validate_job(job, permissive) is True)
+    assert(c.validate_job(job, strict) is False)
+
+
+######
+#
+#  TASK TESTS
+#
+#####
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("name,args,expected", [
+                        ('exists', ['00001', 'test'], False),
+                        ('add', [{'id': '00001'}, 'test'], True),
+                        ('exists', ['00001', 'test'], True),
+                        ('remove', ['00001', 'test'], True),
+                        ('exists', ['00001', 'test'], False)
+])
+def test_redis_io(name, args, expected, task_helper):
+    fn = getattr(task_helper, name)
+    res = fn(*args)
+    assert(res == expected)

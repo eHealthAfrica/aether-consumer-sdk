@@ -45,7 +45,7 @@ kill_all
 if [[ $SCAFFOLD == True ]]
 then
     echo "_____________________________________________ Starting Kafka"
-    $DC_TEST up -d zookeeper-test kafka-test
+    $DC_TEST up -d zookeeper-test kafka-test redis-test
 fi
 
 echo "_____________________________________________ Starting Python Tests in mode $MODE"

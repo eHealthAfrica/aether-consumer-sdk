@@ -16,7 +16,7 @@ chardet==3.0.4
 Click==7.0
 decorator==4.3.0
 entrypoints==0.3
-flake8==3.7.5
+flake8==3.7.6
 Flask==1.0.2
 idna==2.8
 itsdangerous==1.1.0
@@ -34,8 +34,9 @@ ply==3.11
 py==1.5.3
 pycodestyle==2.5.0
 pyflakes==2.1.0
-pytest==4.2.1
+pytest==4.3.0
 pytest-runner==4.4
+redis==3.2.0
 requests==2.21.0
 six==1.11.0
 soupsieve==1.8

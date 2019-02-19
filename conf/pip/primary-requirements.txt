@@ -16,6 +16,7 @@ kafka-python
 mock
 pytest
 pytest-runner
+redis
 requests
 spavro
 webtest
