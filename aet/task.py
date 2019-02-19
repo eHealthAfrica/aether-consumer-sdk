@@ -72,7 +72,7 @@ class TaskHelper(object):
         task = self.redis.get(task_id)
         if not task:
             raise ValueError('No task with id {task_id}'.format(task_id=task_id))
-        return task
+        return json.loads(task)
 
     def list(self, type=None):
         # jobs as a generator

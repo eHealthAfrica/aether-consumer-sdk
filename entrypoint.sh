@@ -62,7 +62,7 @@ test_unit() {
 test_coverage() {
     echo 'Running All Tests...'
     export PYTHONDONTWRITEBYTECODE=1 
-    pytest --cov=aet tests/ -p no:cacheprovider
+    pytest --cov-report term-missing --cov=aet tests/ -p no:cacheprovider
     cat /code/conf/extras/good_job.txt
 }
 

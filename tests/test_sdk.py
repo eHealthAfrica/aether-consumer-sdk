@@ -350,5 +350,15 @@ def test_redis_get_methods(task_helper):
     for t in tasks:
         assert(task_helper.add(t, _type) is True)
         assert(task_helper.exists(t['id'], _type) is True)
+    for t in tasks:
+        _id = t['id']
+        from_redis = task_helper.get(_id, _type)
+        assert(from_redis.get('id') == _id)
+    try:
+        task_helper.get('fake_id', _type)
+    except ValueError:
+        pass
+    else:
+        assert(False)
     redis_ids = list(task_helper.list(_type))
     assert(all([t['id'] in redis_ids for t in tasks]))
