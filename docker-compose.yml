@@ -5,9 +5,14 @@ services:
   # Aether Kafka Containers
   # ---------------------------------
 
-
+  redis-test:
+    image: redis:alpine
+    command: "redis-server --requirepass ${REDIS_PASSWORD:-aredispassword}"
+    env_file:
+      - tests/test_environment.env
+      
   zookeeper-test:
-    image: confluentinc/cp-zookeeper:latest
+    image: confluentinc/cp-zookeeper:5.1.1
     restart: on-failure
     environment:
       ZOOKEEPER_CLIENT_PORT: 32181
@@ -16,7 +21,7 @@ services:
       - "moby:127.0.0.1"
 
   kafka-test:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:5.1.1
     restart: on-failure
     ports:
       - "29092:29092"

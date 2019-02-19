@@ -25,17 +25,35 @@ function kill_all(){
   $DC_TEST down
 }
 
-DC_TEST="docker-compose -f ../docker-compose.yml"
+DC_TEST="docker-compose -f docker-compose.yml"
+MODE=null
+if [[ $1 == "integration" || $1 == "all" ]]
+then
+    MODE="test_integration"
+    scaffold=True
+elif [[ $1 == "unit" ]]
+then
+    MODE="test_unit"
+    scaffold=False
+else
+    echo "no valid (unit, integration, all) test type indicated. Running 'all'."
+    MODE="test"
+    scaffold=True
+fi
 
 kill_all
-echo "_____________________________________________ Starting Kafka"
-$DC_TEST up -d zookeeper-test kafka-test
+if [[ $scaffold == True ]]
+then
+    echo "_____________________________________________ Starting Kafka"
+    $DC_TEST up -d zookeeper-test kafka-test
+fi
 
-echo "_____________________________________________ Starting Python Tests"
+echo "_____________________________________________ Starting Python Tests in mode $MODE"
 
 echo "_________________________________________________ Building container"
 $DC_TEST build consumer-test
-$DC_TEST run consumer-test test
+echo "_________________________________________________ Running tests: $MODE"
+$DC_TEST run consumer-test $MODE
 
 echo "_____________________________________________ Finished Test"
 
