@@ -33,11 +33,35 @@ from aet.kafka import KafkaConsumer
 # to run integration tests / all tests run the test_all.sh script from the /tests directory.
 
 
-#####################
-# Integration Tests #
-#####################
+######
+#
+#  SETTINGS TESTS
+#
+#####
 
-# (pytest.lazy_fixture('messages_test_avro_no_schema'), 'TestAvroNoSchema', True),
+@pytest.mark.unit
+def test_settings(fake_settings):
+    cset = fake_settings
+    settings_copy = cset.copy()
+    assert('C' in cset)  # exclude doesn't matter in orignial
+    assert('B' not in settings_copy)  # exclude works on copies
+    assert(settings_copy.get('D') == 2)  # alias works on both
+    assert(cset.get('D') == 2)  # alias works on both
+    assert(cset.get('MISSING', 3) == 3)
+
+
+@pytest.mark.unit
+def test_settings_check(fake_settings):
+    with pytest.raises(AssertionError):
+        settings.check_required_fields(fake_settings, '["A", "B", "E"]')
+    assert('A' in settings.check_required_fields(fake_settings, '["A", "B", "C"]'))
+
+
+######
+#
+#  KAFKA TESTS
+#
+#####
 @pytest.mark.integration
 @pytest.mark.parametrize("messages,topic,is_json", [
     (pytest.lazy_fixture('messages_test_json_utf8'), 'TestJSONMessagesUTF', True),
@@ -213,16 +237,6 @@ def test_publishing_enum_pass(default_consumer_args,
             for msg in package.get("messages"):
                 assert(msg.get("publish") in expected_values)
 
-#####################
-#    Unit Tests     #
-#####################
-
-######
-#
-#  KAFKA Consumer
-#
-#####
-
 
 @pytest.mark.unit
 @pytest.mark.parametrize("field_path,field_value,pass_msg,fail_msg", [
@@ -241,6 +255,16 @@ def test_get_approval_filter(offline_consumer, field_path, field_value, pass_msg
     _filter = offline_consumer.get_approval_filter()
     assert(_filter(pass_msg))
     assert(_filter(fail_msg) is not True)
+
+
+@pytest.mark.unit
+def test_message_deserialize__failure(offline_consumer):
+    msg = 'a utf-16 string'.encode('utf-16')
+    obj = io.BytesIO()
+    obj.write(msg)
+    with pytest.raises(UnicodeDecodeError):
+        msg = offline_consumer._decode_text(obj)
+    assert(True)
 
 
 @pytest.mark.unit
@@ -348,6 +372,21 @@ def test_api_post_calls(call, result, body, mocked_api):
 #####
 
 
+# real consumer
+@pytest.mark.integration
+def test_consumer_startup_shutdown(consumer):
+    call = 'healthcheck'
+    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
+    pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
+    auth = requests.auth.HTTPBasicAuth(user, pw)
+    port = consumer.consumer_settings.get('EXPOSE_PORT')
+    url = f'http://localhost:{port}/{call}'
+    res = requests.get(url, auth=auth)
+    res.raise_for_status()
+    assert(res.text == 'healthy')
+
+
+# mock consumer
 @pytest.mark.unit
 def test_load_schema_validate(mocked_consumer):
     c = mocked_consumer

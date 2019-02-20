@@ -125,6 +125,17 @@ def send_avro_messages(producer, topic, schema, messages):
     producer.flush()
 
 
+@pytest.mark.unit
+@pytest.fixture()
+def fake_settings():
+    _settings = settings.Settings(
+        file_path='/code/tests/assets/test_config.json',
+        alias={'D': 'B'},
+        exclude=['B']
+    )
+    return _settings
+
+
 @pytest.mark.integration
 @pytest.fixture(scope="session")
 def producer():
@@ -313,6 +324,20 @@ def offline_consumer():
 @pytest.fixture(scope="module")
 def mocked_consumer():
     return MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+
+
+@pytest.mark.integration
+@pytest.fixture(scope="module")
+def consumer():
+    _settings = dict(settings.CONSUMER_CONFIG)
+    # mock API from unit tests not shutdown until end avoid it's port and name
+    _settings['CONSUMER_NAME'] = 'BaseConsumer'
+    _settings['EXPOSE_PORT'] = 9014
+    _consumer = BaseConsumer(_settings, settings.KAFKA_CONFIG)
+    yield _consumer
+    # teardown
+    _consumer.stop()
+    sleep(.5)
 
 
 # API Assets
