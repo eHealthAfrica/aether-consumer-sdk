@@ -231,16 +231,6 @@ def messages_test_text_ascii(topic_writer):
     return messages
 
 
-# @pytest.mark.integration
-# @pytest.fixture(scope="session")
-# def messages_test_avro_no_schema(topic_writer):
-#     topic = "TestAvroNoSchema"
-#     src = "TestBooleanPass"
-#     messages = topic_writer(
-#         topic=topic, source=src, encoding='avro', is_json=True, include_schema=False)
-#     return messages
-
-
 @pytest.mark.integration
 @pytest.fixture(scope="session")
 def messages_test_boolean_pass(topic_writer):

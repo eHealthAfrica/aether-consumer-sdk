@@ -129,10 +129,6 @@ class KafkaConsumer(VanillaConsumer):
         last_schema = None
         mask = None
         approval_filter = None
-        '''
-        def approval_filter(x):
-            return True
-        '''
         partitioned_messages = self.poll(timeout_ms, max_records)
         if partitioned_messages:
             for part, packages in partitioned_messages.items():
@@ -189,12 +185,6 @@ class KafkaConsumer(VanillaConsumer):
         # we get a mess of unicode that can't be json parsed so we need ast
         raw_schema = ast.literal_eval(str(reader.meta))
         schema = json.loads(raw_schema.get("avro.schema"))
-        # if not schema:
-        #     return self._unpack_bytes_message(file_obj), None, None, None
-        # last_schema = None
-        # mask = None
-        # def approval_filter(x):
-        #     return True
         if schema != last_schema:
             last_schema = schema
             package_result["schema"] = schema
