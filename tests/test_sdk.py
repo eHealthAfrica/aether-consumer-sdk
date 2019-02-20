@@ -244,6 +244,16 @@ def test_get_approval_filter(offline_consumer, field_path, field_value, pass_msg
 
 
 @pytest.mark.unit
+def test_message_deserialize__failure(offline_consumer):
+    msg = 'a utf-16 string'.encode('utf-16')
+    obj = io.BytesIO()
+    obj.write(msg)
+    with pytest.raises(UnicodeDecodeError):
+        msg = offline_consumer._decode_text(obj)
+    assert(True)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("emit_level", [
     (0),
     (1),
@@ -348,6 +358,21 @@ def test_api_post_calls(call, result, body, mocked_api):
 #####
 
 
+# real consumer
+@pytest.mark.integration
+def test_consumer_startup_shutdown(consumer):
+    call = 'healthcheck'
+    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
+    pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
+    auth = requests.auth.HTTPBasicAuth(user, pw)
+    port = consumer.consumer_settings.get('EXPOSE_PORT')
+    url = f'http://localhost:{port}/{call}'
+    res = requests.get(url, auth=auth)
+    res.raise_for_status()
+    assert(res.text == 'healthy')
+
+
+# mock consumer
 @pytest.mark.unit
 def test_load_schema_validate(mocked_consumer):
     c = mocked_consumer

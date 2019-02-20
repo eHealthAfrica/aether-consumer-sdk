@@ -24,6 +24,8 @@ from functools import wraps
 from flask import Flask, Response, request, jsonify
 from webtest.http import StopableWSGIServer
 
+from .logger import LOG
+
 
 class APIServer(object):
 
@@ -32,7 +34,8 @@ class APIServer(object):
         self.consumer = consumer
 
     def serve(self):
-        name = self.settings.get('consumer_name')
+        name = self.settings.get('CONSUMER_NAME')
+        LOG.info(f'Starting API: {name}')
         self.app = Flask(name)  # noqa
         try:
             handler = self.app.logger.handlers[0]

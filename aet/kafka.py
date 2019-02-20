@@ -112,7 +112,7 @@ class KafkaConsumer(VanillaConsumer):
         return mask
 
     def mask_message(self, msg, mask=None):
-        # this applied a mask created from get_mask_from_schema()
+        # this applies a mask created from get_mask_from_schema()
         if not mask:
             return msg
         else:
@@ -214,10 +214,7 @@ class KafkaConsumer(VanillaConsumer):
             return reader.getvalue().decode('utf-8', 'strict')
         except UnicodeDecodeError:
             pass
-        try:
-            return reader.getvalue().decode('ascii', 'strict')
-        except Exception as err:
-            raise err
+        return reader.getvalue().decode('ascii', 'strict')  # raises UnicodeDecodeError
 
     def _read_json(self, raw_text):
         try:

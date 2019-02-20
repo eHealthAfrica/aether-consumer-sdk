@@ -34,7 +34,8 @@ class BaseConsumer(object):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         self.task = TaskHelper(self.consumer_settings)
-        self.children = []
+        self.jobs = {}
+        self.serve_api(self.consumer_settings)
 
     # Control API
 
@@ -81,11 +82,11 @@ class BaseConsumer(object):
 
     def list_jobs(self):
         status = {}
-        for job in self.task.list(type='job'):
-            if job in self.children:
-                status[job] = str(self.children.get(job).status)
+        for job_id in self.task.list(type='job'):
+            if job_id in self.jobs:
+                status[job_id] = str(self.jobs.get(job_id).status)
             else:
-                status[job] = 'unknown'
+                status[job_id] = 'unknown'
         return status
 
 

@@ -28,14 +28,14 @@ class Settings(dict):
         if not exclude:
             self.exclude = []
         else:
-            self.exclude = exclude
+            self.exclude = [k.upper for k in exclude]
         self.alias = alias
         if file_path:
             self.load(file_path)
 
     def get(self, key, default=None):
         try:
-            return self.__getitem__(key)
+            return self.__getitem__(key.upper())
         except KeyError:
             return default
 
@@ -44,7 +44,7 @@ class Settings(dict):
             key = self.alias.get(key)
         result = os.environ.get(key.upper())
         if result is None:
-            result = super().__getitem__(key)
+            result = super().__getitem__(key.upper())
 
         return result
 
@@ -58,7 +58,7 @@ class Settings(dict):
         with open(path) as f:
             obj = json.load(f)
             for k in obj:
-                self[k] = obj.get(k)
+                self[k.upper()] = obj.get(k)
 
 
 def check_required_fields(conf, fields):
