@@ -33,11 +33,35 @@ from aet.kafka import KafkaConsumer
 # to run integration tests / all tests run the test_all.sh script from the /tests directory.
 
 
-#####################
-# Integration Tests #
-#####################
+######
+#
+#  SETTINGS TESTS
+#
+#####
 
-# (pytest.lazy_fixture('messages_test_avro_no_schema'), 'TestAvroNoSchema', True),
+@pytest.mark.unit
+def test_settings(fake_settings):
+    cset = fake_settings
+    settings_copy = cset.copy()
+    assert('C' in cset)  # exclude doesn't matter in orignial
+    assert('B' not in settings_copy)  # exclude works on copies
+    assert(settings_copy.get('D') == 2)  # alias works on both
+    assert(cset.get('D') == 2)  # alias works on both
+    assert(cset.get('MISSING', 3) == 3)
+
+
+@pytest.mark.unit
+def test_settings_check(fake_settings):
+    with pytest.raises(AssertionError):
+        settings.check_required_fields(fake_settings, '["A", "B", "E"]')
+    assert('A' in settings.check_required_fields(fake_settings, '["A", "B", "C"]'))
+
+
+######
+#
+#  KAFKA TESTS
+#
+#####
 @pytest.mark.integration
 @pytest.mark.parametrize("messages,topic,is_json", [
     (pytest.lazy_fixture('messages_test_json_utf8'), 'TestJSONMessagesUTF', True),
@@ -212,16 +236,6 @@ def test_publishing_enum_pass(default_consumer_args,
         for package in packages:
             for msg in package.get("messages"):
                 assert(msg.get("publish") in expected_values)
-
-#####################
-#    Unit Tests     #
-#####################
-
-######
-#
-#  KAFKA Consumer
-#
-#####
 
 
 @pytest.mark.unit

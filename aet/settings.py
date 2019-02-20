@@ -28,8 +28,8 @@ class Settings(dict):
         if not exclude:
             self.exclude = []
         else:
-            self.exclude = [k.upper for k in exclude]
-        self.alias = alias
+            self.exclude = [k.upper() for k in exclude]
+        self.alias = alias if alias else {}
         if file_path:
             self.load(file_path)
 

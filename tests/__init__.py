@@ -125,6 +125,17 @@ def send_avro_messages(producer, topic, schema, messages):
     producer.flush()
 
 
+@pytest.mark.unit
+@pytest.fixture()
+def fake_settings():
+    _settings = settings.Settings(
+        file_path='/code/tests/assets/test_config.json',
+        alias={'D': 'B'},
+        exclude=['B']
+    )
+    return _settings
+
+
 @pytest.mark.integration
 @pytest.fixture(scope="session")
 def producer():
