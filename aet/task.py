@@ -18,20 +18,29 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import datetime
+from datetime import datetime
 import json
+
+import redis
 
 
 class TaskHelper(object):
 
-    def __init__(self):
-        self.redis = None
+    def __init__(self, settings):
+        self.settings = settings
+        self.redis = redis.Redis(
+            host=settings.get('REDIS_HOST'),
+            port=settings.get('REDIS_PORT'),
+            password=settings.get('REDIS_PASSWORD'),
+            db=settings.get('REDIS_DB'),
+            encoding="utf-8",
+            decode_responses=True
+        )
 
-        # Generic Redis Task Functions
-
+    # Generic Redis Task Functions
     def add(self, task, type):
         key = '_{type}:{_id}'.format(
-            task=task, _id=task['id']
+            type=type, _id=task['id']
         )
         task['modified'] = datetime.now().isoformat()
         return self.redis.set(key, json.dumps(task))
@@ -63,7 +72,7 @@ class TaskHelper(object):
         task = self.redis.get(task_id)
         if not task:
             raise ValueError('No task with id {task_id}'.format(task_id=task_id))
-        return task
+        return json.loads(task)
 
     def list(self, type=None):
         # jobs as a generator

@@ -30,10 +30,11 @@ from spavro.datafile import DataFileWriter
 from spavro.io import DatumWriter
 from spavro.schema import parse as ParseSchema
 
+from aet import settings
+from aet.api import APIServer
 from aet.consumer import BaseConsumer
 from aet.kafka import KafkaConsumer
-from aet.api import APIServer
-from aet import settings
+from aet.task import TaskHelper
 
 from .assets.schemas import test_schemas
 
@@ -229,12 +230,19 @@ def offline_consumer():
     return consumer
 
 
+# Consumer Assets
+@pytest.mark.unit
+@pytest.fixture(scope="module")
+def mocked_consumer():
+    return MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+
+
 # API Assets
 @pytest.mark.unit
 @pytest.fixture(scope="module")
-def mocked_api():
+def mocked_api(mocked_consumer):
     api = APIServer(
-        MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG),
+        mocked_consumer,
         settings.CONSUMER_CONFIG
     )
     api.serve()
@@ -242,3 +250,10 @@ def mocked_api():
     # teardown
     api.stop()
     sleep(.5)
+
+
+# TaskHelper Assets
+@pytest.mark.integration
+@pytest.fixture(scope="function")
+def task_helper():
+    return TaskHelper(settings.CONSUMER_CONFIG)

@@ -33,7 +33,7 @@ class BaseConsumer(object):
     def __init__(self, CON_CONF, KAFKA_CONF):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
-        self.task = TaskHelper()
+        self.task = TaskHelper(self.consumer_settings)
         self.children = []
 
     # Control API

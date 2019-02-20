@@ -15,7 +15,9 @@ jsonschema
 kafka-python
 mock
 pytest
+pytest-cov
 pytest-runner
+redis
 requests
 spavro
 webtest

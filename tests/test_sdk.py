@@ -177,6 +177,12 @@ def test_publishing_enum_pass(default_consumer_args,
 #    Unit Tests     #
 #####################
 
+######
+#
+#  KAFKA Consumer
+#
+#####
+
 
 @pytest.mark.unit
 @pytest.mark.parametrize("field_path,field_value,pass_msg,fail_msg", [
@@ -243,6 +249,12 @@ def test_msk_msg_custom_map(offline_consumer,
     assert(len(masked.keys()) == (expected_count)), ("%s %s" % (emit_level, masked))
 
 
+######
+#
+#  API TESTS
+#
+#####
+
 @pytest.mark.unit
 @pytest.mark.parametrize("call,result", [
                         ('jobs/delete', True),
@@ -287,3 +299,66 @@ def test_api_post_calls(call, result, body, mocked_api):
         val = res.text
     finally:
         assert(val == result), f'{call} | {result} | {body}'
+
+
+######
+#
+#  CONSUMER TESTS
+#
+#####
+
+
+@pytest.mark.unit
+def test_load_schema_validate(mocked_consumer):
+    c = mocked_consumer
+    permissive = c.load_schema('/code/conf/schema/permissive.json')
+    strict = c.load_schema('/code/conf/schema/strict.json')
+    job = {'a': 1}
+    assert(c.validate_job(job, permissive) is True)
+    assert(c.validate_job(job, strict) is False)
+
+
+######
+#
+#  TASK TESTS
+#
+#####
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("name,args,expected", [
+                        ('remove', ['00001', 'test'], False),
+                        ('exists', ['00001', 'test'], False),
+                        ('add', [{'id': '00001'}, 'test'], True),
+                        ('exists', ['00001', 'test'], True),
+                        ('remove', ['00001', 'test'], True),
+                        ('exists', ['00001', 'test'], False)
+])
+def test_redis_io(name, args, expected, task_helper):
+    fn = getattr(task_helper, name)
+    res = fn(*args)
+    assert(res == expected)
+
+
+@pytest.mark.integration
+def test_redis_get_methods(task_helper):
+    tasks = [
+        {'id': '00001', 'a': 1},
+        {'id': '00002', 'a': 2},
+    ]
+    _type = 'test'
+    for t in tasks:
+        assert(task_helper.add(t, _type) is True)
+        assert(task_helper.exists(t['id'], _type) is True)
+    for t in tasks:
+        _id = t['id']
+        from_redis = task_helper.get(_id, _type)
+        assert(from_redis.get('id') == _id)
+    try:
+        task_helper.get('fake_id', _type)
+    except ValueError:
+        pass
+    else:
+        assert(False)
+    redis_ids = list(task_helper.list(_type))
+    assert(all([t['id'] in redis_ids for t in tasks]))

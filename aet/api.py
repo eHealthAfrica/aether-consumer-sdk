@@ -131,6 +131,7 @@ class APIServer(object):
             return jsonify({'valid': res})
 
     def handle_job_crud(self, request, _type):
+        self.app.logger.debug(request)
         _id = request.args.get('id', None)
         if _type == 'CREATE':
             response = jsonify(self.consumer.add_job(job=request.get_json()))

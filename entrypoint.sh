@@ -58,6 +58,14 @@ test_unit() {
     cat /code/conf/extras/good_job.txt
 }
 
+
+test_coverage() {
+    echo 'Running All Tests...'
+    export PYTHONDONTWRITEBYTECODE=1 
+    pytest --cov-report term-missing --cov=aet tests/ -p no:cacheprovider
+    cat /code/conf/extras/good_job.txt
+}
+
 case "$1" in
     bash )
         bash
@@ -82,8 +90,7 @@ case "$1" in
 
     test)
         test_flake8
-        test_unit
-        test_integration
+        test_coverage
     ;;
 
     test_unit)
@@ -98,10 +105,6 @@ case "$1" in
 
     test_lint)
         test_flake8
-    ;;
-
-    test_coverage)
-        test_coverage "${@:2}"
     ;;
 
     build)
