@@ -91,12 +91,16 @@ class MockConsumer(BaseConsumer):
         self.schema = MockConsumer.STRICT_SCHEMA
 
 
-def send_plain_messages(producer, topic, schema, messages):
+def send_plain_messages(producer, topic, schema, messages, encoding, is_json=True):
     for msg in messages:
+        if is_json:
+            val = json.dumps(msg).encode(encoding)
+        else:
+            val = msg['id'].encode(encoding)
         future = producer.send(
             topic,
             key=str(msg.get("id")),
-            value=json.dumps(msg).encode('utf-8')
+            value=val
         )
         # block until it actually sends.
         record_metadata = future.get(timeout=100)
@@ -142,10 +146,13 @@ def producer():
 @pytest.mark.integration
 @pytest.fixture(scope="session")
 def topic_writer(producer):
-    def _fn(topic=None, source=None, avro=True):
+    def _fn(topic=None, source=None, encoding='avro', is_json=True, include_schema=True):
         assets = test_schemas.get(source)
-        schema = assets.get("schema")
-        schema = ParseSchema(json.dumps(schema, indent=2))
+        if include_schema:
+            schema = assets.get("schema")
+            schema = ParseSchema(json.dumps(schema, indent=2))
+        else:
+            schema = None
         mocker = assets.get("mocker")
         messages = []
         # the parcel gets large if you stick too many messages in it.
@@ -154,16 +161,18 @@ def topic_writer(producer):
             for x in range(0, topic_size, 100):
                 batch = mocker(count=100)
                 messages.extend(batch)
-                if avro:
+                if encoding == 'avro':
                     send_avro_messages(producer, topic, schema, batch)
                 else:
-                    send_plain_messages(producer, topic, schema, messages)
+                    send_plain_messages(
+                        producer, topic, schema, messages, encoding=encoding, is_json=is_json)
         else:
             messages = mocker(count=topic_size)
-            if avro:
+            if encoding == 'avro':
                 send_avro_messages(producer, topic, schema, messages)
             else:
-                send_plain_messages(producer, topic, schema, messages)
+                send_plain_messages(
+                    producer, topic, schema, messages, encoding=encoding, is_json=is_json)
         return messages
     return _fn
 
@@ -188,11 +197,48 @@ def default_consumer_args():
 
 @pytest.mark.integration
 @pytest.fixture(scope="session")
-def messages_test_no_schema(topic_writer):
-    topic = "TestPlainMessages"
+def messages_test_json_utf8(topic_writer):
+    topic = "TestJSONMessagesUTF"
     src = "TestBooleanPass"
-    messages = topic_writer(topic=topic, source=src, avro=False)
+    messages = topic_writer(topic=topic, source=src, encoding='utf-8')
     return messages
+
+
+@pytest.mark.integration
+@pytest.fixture(scope="session")
+def messages_test_json_ascii(topic_writer):
+    topic = "TestJSONMessagesASCII"
+    src = "TestBooleanPass"
+    messages = topic_writer(topic=topic, source=src, encoding='ascii')
+    return messages
+
+
+@pytest.mark.integration
+@pytest.fixture(scope="session")
+def messages_test_text_utf8(topic_writer):
+    topic = "TestPlainMessagesUTF"
+    src = "TestBooleanPass"
+    messages = topic_writer(topic=topic, source=src, encoding='utf-8', is_json=False)
+    return messages
+
+
+@pytest.mark.integration
+@pytest.fixture(scope="session")
+def messages_test_text_ascii(topic_writer):
+    topic = "TestPlainMessagesASCII"
+    src = "TestBooleanPass"
+    messages = topic_writer(topic=topic, source=src, encoding='ascii', is_json=False)
+    return messages
+
+
+# @pytest.mark.integration
+# @pytest.fixture(scope="session")
+# def messages_test_avro_no_schema(topic_writer):
+#     topic = "TestAvroNoSchema"
+#     src = "TestBooleanPass"
+#     messages = topic_writer(
+#         topic=topic, source=src, encoding='avro', is_json=True, include_schema=False)
+#     return messages
 
 
 @pytest.mark.integration

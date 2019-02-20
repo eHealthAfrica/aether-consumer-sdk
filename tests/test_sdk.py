@@ -37,11 +37,19 @@ from aet.kafka import KafkaConsumer
 # Integration Tests #
 #####################
 
+# (pytest.lazy_fixture('messages_test_avro_no_schema'), 'TestAvroNoSchema', True),
 @pytest.mark.integration
-def test_read_messages_no_schema(messages_test_no_schema, default_consumer_args):
-    _ids = [m['id'] for m in messages_test_no_schema]
-    topic = "TestPlainMessages"
-    assert(len(messages_test_no_schema) ==
+@pytest.mark.parametrize("messages,topic,is_json", [
+    (pytest.lazy_fixture('messages_test_json_utf8'), 'TestJSONMessagesUTF', True),
+    (pytest.lazy_fixture('messages_test_json_ascii'), 'TestJSONMessagesASCII', True),
+    (pytest.lazy_fixture('messages_test_text_ascii'), 'TestPlainMessagesASCII', False),
+    (pytest.lazy_fixture('messages_test_text_utf8'), 'TestPlainMessagesUTF', False)
+])
+@pytest.mark.integration
+def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args):
+    _ids = [m['id'] for m in messages]
+    # topic = "TestPlainMessages"
+    assert(len(messages) ==
            topic_size), "Should have generated the right number of messages"
     iter_consumer = KafkaConsumer(**default_consumer_args)
     iter_consumer.subscribe(topic)
@@ -53,7 +61,10 @@ def test_read_messages_no_schema(messages_test_no_schema, default_consumer_args)
         for partition, packages in messages.items():
             for package in packages:
                 for msg in package.get("messages"):
-                    _id = msg.get('id')
+                    if is_json:
+                        _id = msg.get('id')
+                    else:
+                        _id = msg
                     try:
                         # remove found records from our pick list
                         _ids.remove(_id)

@@ -16,6 +16,7 @@ kafka-python
 mock
 pytest
 pytest-cov
+pytest-lazy-fixture
 pytest-runner
 redis
 requests

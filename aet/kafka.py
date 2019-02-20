@@ -167,7 +167,7 @@ class KafkaConsumer(VanillaConsumer):
                             mask,
                             approval_filter
                         ) = (
-                            self._unpack_json_message(obj),
+                            self._unpack_bytes_message(obj),
                             None,
                             None,
                             None
@@ -189,13 +189,13 @@ class KafkaConsumer(VanillaConsumer):
         # we get a mess of unicode that can't be json parsed so we need ast
         raw_schema = ast.literal_eval(str(reader.meta))
         schema = json.loads(raw_schema.get("avro.schema"))
-        if not schema:
-            last_schema = None
-            mask = None
-
-            def approval_filter(x):
-                return True
-        elif schema != last_schema:
+        # if not schema:
+        #     return self._unpack_bytes_message(file_obj), None, None, None
+        # last_schema = None
+        # mask = None
+        # def approval_filter(x):
+        #     return True
+        if schema != last_schema:
             last_schema = schema
             package_result["schema"] = schema
             # prepare mask and filter
@@ -212,12 +212,28 @@ class KafkaConsumer(VanillaConsumer):
 
         return package_result, last_schema, mask, approval_filter
 
-    def _unpack_json_message(self, reader):
+    def _unpack_bytes_message(self, reader):
         package_result = {
             "schema": None,
-            "messages": [json.loads(reader.getvalue().decode('utf-8'))]
+            "messages": [self._read_json(self._decode_text(reader))]
         }
         return package_result
+
+    def _decode_text(self, reader):
+        try:
+            return reader.getvalue().decode('utf-8', 'strict')
+        except UnicodeDecodeError:
+            pass
+        try:
+            return reader.getvalue().decode('ascii', 'strict')
+        except Exception as err:
+            raise err
+
+    def _read_json(self, raw_text):
+        try:
+            return json.loads(raw_text)
+        except json.decoder.JSONDecodeError:
+            return raw_text
 
     def seek_to_beginning(self):
         # We override this method to allow for seeking before any messages have been consumed
