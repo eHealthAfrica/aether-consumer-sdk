@@ -37,6 +37,7 @@ pycodestyle==2.5.0
 pyflakes==2.1.0
 pytest==4.3.0
 pytest-cov==2.6.1
+pytest-lazy-fixture==0.5.1
 pytest-runner==4.4
 redis==3.2.0
 requests==2.21.0
