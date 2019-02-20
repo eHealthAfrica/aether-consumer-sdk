@@ -37,6 +37,35 @@ from aet.kafka import KafkaConsumer
 # Integration Tests #
 #####################
 
+@pytest.mark.integration
+def test_read_messages_no_schema(messages_test_no_schema, default_consumer_args):
+    _ids = [m['id'] for m in messages_test_no_schema]
+    topic = "TestPlainMessages"
+    assert(len(messages_test_no_schema) ==
+           topic_size), "Should have generated the right number of messages"
+    iter_consumer = KafkaConsumer(**default_consumer_args)
+    iter_consumer.subscribe(topic)
+    iter_consumer.seek_to_beginning()
+    # more than a few hundres is too large to grab in one pass when not serialized
+    for x in range(int(3 * topic_size / 500)):
+        messages = iter_consumer.poll_and_deserialize(timeout_ms=10000, max_records=1000)
+        # read messages and check masking
+        for partition, packages in messages.items():
+            for package in packages:
+                for msg in package.get("messages"):
+                    _id = msg.get('id')
+                    try:
+                        # remove found records from our pick list
+                        _ids.remove(_id)
+                    except ValueError:
+                        # record may be in another batch
+                        pass
+        if len(_ids) == 0:
+            break
+    iter_consumer.close()
+    # make sure we read all the records
+    assert(len(_ids) == 0)
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize("emit_level,unmasked_fields", [

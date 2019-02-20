@@ -25,6 +25,7 @@ import json
 from kafka import KafkaConsumer as VanillaConsumer
 from spavro.datafile import DataFileReader
 from spavro.io import DatumReader
+from spavro.schema import AvroException
 
 from jsonpath_ng import parse
 
@@ -139,47 +140,84 @@ class KafkaConsumer(VanillaConsumer):
                 partition_result = []
                 # a package can contain multiple messages serialzed with the same schema
                 for package in packages:
-                    package_result = {
-                        "schema": None,
-                        "messages": []
-                    }
-                    schema = None
                     obj = io.BytesIO()
                     obj.write(package.value)
-                    reader = DataFileReader(obj, DatumReader())
-
-                    # We can get the schema directly from the reader.
-                    # we get a mess of unicode that can't be json parsed so we need ast
-                    raw_schema = ast.literal_eval(str(reader.meta))
-                    schema = json.loads(raw_schema.get("avro.schema"))
-                    if not schema:
-                        last_schema = None
-                        mask = None
-
-                        def approval_filter(x):
-                            return True
-                    elif schema != last_schema:
-                        last_schema = schema
-                        package_result["schema"] = schema
-                        # prepare mask and filter
-                        approval_filter = self.get_approval_filter()
-                        mask = self.get_mask_from_schema(schema)
-                    else:
-                        package_result["schema"] = last_schema
-                    for x, msg in enumerate(reader):
-                        # is message is ready for consumption, process it
-                        if approval_filter(msg):
-                            # apply masking
-                            processed_message = self.mask_message(msg, mask)
-                            package_result["messages"].append(processed_message)
-
-                    obj.close()  # don't forget to close your open IO object.
-                    if package_result.get("schema") or len(package_result["messages"]) > 0:
-                        partition_result.append(package_result)
+                    try:
+                        reader = DataFileReader(obj, DatumReader())
+                        (
+                            package_result,
+                            last_schema,
+                            mask,
+                            approval_filter
+                        ) = \
+                            self._reader_to_messages(
+                                reader,
+                                last_schema,
+                                mask,
+                                approval_filter
+                        )
+                        obj.close()  # don't forget to close your open IO object.
+                        if package_result.get("schema") or len(package_result["messages"]) > 0:
+                            partition_result.append(package_result)
+                    except AvroException:
+                        reader = None
+                        (
+                            package_result,
+                            last_schema,
+                            mask,
+                            approval_filter
+                        ) = (
+                            self._unpack_json_message(obj),
+                            None,
+                            None,
+                            None
+                        )
+                        obj.close()  # don't forget to close your open IO object.
+                        if len(package_result["messages"]) > 0:
+                            partition_result.append(package_result)
                 if len(partition_result) > 0:
                     name = "topic:%s-partition:%s" % (part.topic, part.partition)
                     result[name] = partition_result
         return result
+
+    def _reader_to_messages(self, reader, last_schema, mask, approval_filter):
+        package_result = {
+            "schema": None,
+            "messages": []
+        }
+        # We can get the schema directly from the reader.
+        # we get a mess of unicode that can't be json parsed so we need ast
+        raw_schema = ast.literal_eval(str(reader.meta))
+        schema = json.loads(raw_schema.get("avro.schema"))
+        if not schema:
+            last_schema = None
+            mask = None
+
+            def approval_filter(x):
+                return True
+        elif schema != last_schema:
+            last_schema = schema
+            package_result["schema"] = schema
+            # prepare mask and filter
+            approval_filter = self.get_approval_filter()
+            mask = self.get_mask_from_schema(schema)
+        else:
+            package_result["schema"] = last_schema
+        for x, msg in enumerate(reader):
+            # is message is ready for consumption, process it
+            if approval_filter(msg):
+                # apply masking
+                processed_message = self.mask_message(msg, mask)
+                package_result["messages"].append(processed_message)
+
+        return package_result, last_schema, mask, approval_filter
+
+    def _unpack_json_message(self, reader):
+        package_result = {
+            "schema": None,
+            "messages": [json.loads(reader.getvalue().decode('utf-8'))]
+        }
+        return package_result
 
     def seek_to_beginning(self):
         # We override this method to allow for seeking before any messages have been consumed

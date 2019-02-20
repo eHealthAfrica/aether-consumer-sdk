@@ -91,7 +91,21 @@ class MockConsumer(BaseConsumer):
         self.schema = MockConsumer.STRICT_SCHEMA
 
 
-def send_messages(producer, name, schema, messages):
+def send_plain_messages(producer, topic, schema, messages):
+    for msg in messages:
+        future = producer.send(
+            topic,
+            key=str(msg.get("id")),
+            value=json.dumps(msg).encode('utf-8')
+        )
+        # block until it actually sends.
+        record_metadata = future.get(timeout=100)
+        if not record_metadata:
+            pass
+    producer.flush()
+
+
+def send_avro_messages(producer, topic, schema, messages):
     bytes_writer = io.BytesIO()
     writer = DataFileWriter(bytes_writer, DatumWriter(), schema, codec='deflate')
     for msg in messages:
@@ -99,7 +113,7 @@ def send_messages(producer, name, schema, messages):
     writer.flush()
     raw_bytes = bytes_writer.getvalue()
     writer.close()
-    future = producer.send(name, key=str(msg.get("id")), value=raw_bytes)
+    future = producer.send(topic, key=str(msg.get("id")), value=raw_bytes)
     # block until it actually sends.
     record_metadata = future.get(timeout=100)
     if not record_metadata:
@@ -107,7 +121,9 @@ def send_messages(producer, name, schema, messages):
     producer.flush()
 
 
-def write_to_topic(schema_name):
+@pytest.mark.integration
+@pytest.fixture(scope="session")
+def producer():
     producer = None
     for x in range(kafka_connection_retry):
         try:
@@ -119,23 +135,37 @@ def write_to_topic(schema_name):
     if not producer:
         raise NoBrokersAvailable("Could not attach to kafka after %s seconds. Check configuration" %
                                  (kafka_connection_retry * kafka_connection_retry_wait))
-    assets = test_schemas.get(schema_name)
-    schema = assets.get("schema")
-    schema = ParseSchema(json.dumps(schema, indent=2))
-    mocker = assets.get("mocker")
-    messages = []
-    # the parcel gets large if you stick too many messages in it.
-    # 100 serialzed together effectively minimizes the impact of passing the schema.
-    if topic_size > 100:
-        for x in range(0, topic_size, 100):
-            batch = mocker(count=100)
-            messages.extend(batch)
-            send_messages(producer, schema_name, schema, batch)
-    else:
-        messages = mocker(count=topic_size)
-        send_messages(producer, schema_name, schema, messages)
+    yield producer
     producer.close()
-    return messages
+
+
+@pytest.mark.integration
+@pytest.fixture(scope="session")
+def topic_writer(producer):
+    def _fn(topic=None, source=None, avro=True):
+        assets = test_schemas.get(source)
+        schema = assets.get("schema")
+        schema = ParseSchema(json.dumps(schema, indent=2))
+        mocker = assets.get("mocker")
+        messages = []
+        # the parcel gets large if you stick too many messages in it.
+        # 100 serialzed together effectively minimizes the impact of passing the schema.
+        if topic_size > 100:
+            for x in range(0, topic_size, 100):
+                batch = mocker(count=100)
+                messages.extend(batch)
+                if avro:
+                    send_avro_messages(producer, topic, schema, batch)
+                else:
+                    send_plain_messages(producer, topic, schema, messages)
+        else:
+            messages = mocker(count=topic_size)
+            if avro:
+                send_avro_messages(producer, topic, schema, messages)
+            else:
+                send_plain_messages(producer, topic, schema, messages)
+        return messages
+    return _fn
 
 
 @pytest.mark.integration
@@ -158,22 +188,34 @@ def default_consumer_args():
 
 @pytest.mark.integration
 @pytest.fixture(scope="session")
-def messages_test_boolean_pass():
-    messages = write_to_topic("TestBooleanPass")
+def messages_test_no_schema(topic_writer):
+    topic = "TestPlainMessages"
+    src = "TestBooleanPass"
+    messages = topic_writer(topic=topic, source=src, avro=False)
     return messages
 
 
 @pytest.mark.integration
 @pytest.fixture(scope="session")
-def messages_test_enum_pass():
-    messages = write_to_topic("TestEnumPass")
+def messages_test_boolean_pass(topic_writer):
+    topic = "TestBooleanPass"
+    messages = topic_writer(topic=topic, source=topic)
     return messages
 
 
 @pytest.mark.integration
 @pytest.fixture(scope="session")
-def messages_test_secret_pass():
-    messages = write_to_topic("TestTopSecret")
+def messages_test_enum_pass(topic_writer):
+    topic = "TestEnumPass"
+    messages = topic_writer(topic=topic, source=topic)
+    return messages
+
+
+@pytest.mark.integration
+@pytest.fixture(scope="session")
+def messages_test_secret_pass(topic_writer):
+    topic = "TestTopSecret"
+    messages = topic_writer(topic=topic, source=topic)
     return messages
 
 
