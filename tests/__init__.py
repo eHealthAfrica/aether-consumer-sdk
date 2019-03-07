@@ -37,6 +37,8 @@ from aet.kafka import KafkaConsumer
 from aet.task import TaskHelper
 
 from .assets.schemas import test_schemas
+from aet.logger import LOG
+
 
 kafka_server = "kafka-test:29092"
 kafka_connection_retry = 10
@@ -44,6 +46,15 @@ kafka_connection_retry_wait = 6
 # increasing topic_size may cause poll to be unable to get all the messages in one call.
 # needs to be even an if > 100 a multiple of 100.
 topic_size = 500
+
+
+class MockCallable(object):
+    def __init__(self):
+        self.value = None
+
+    def set_value(self, msg):
+        LOG.debug(f'MockCallable got msg: {msg}')
+        self.value = msg
 
 
 class MockTaskHelper(object):
@@ -359,4 +370,6 @@ def mocked_api(mocked_consumer):
 @pytest.mark.integration
 @pytest.fixture(scope="function")
 def task_helper():
-    return TaskHelper(settings.CONSUMER_CONFIG)
+    helper = TaskHelper(settings.CONSUMER_CONFIG)
+    yield helper
+    helper.stop()

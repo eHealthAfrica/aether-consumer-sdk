@@ -20,22 +20,26 @@
 
 from datetime import datetime
 import json
-
 import redis
+
+from .logger import LOG
 
 
 class TaskHelper(object):
 
     def __init__(self, settings):
         self.settings = settings
+        self.redis_db = settings.get('REDIS_DB')
         self.redis = redis.Redis(
             host=settings.get('REDIS_HOST'),
             port=settings.get('REDIS_PORT'),
             password=settings.get('REDIS_PASSWORD'),
-            db=settings.get('REDIS_DB'),
+            db=self.redis_db,
             encoding="utf-8",
             decode_responses=True
         )
+        self.pubsub = None
+        self._subscribe_thread = None
 
     # Generic Redis Task Functions
     def add(self, task, type):
@@ -78,7 +82,58 @@ class TaskHelper(object):
         # jobs as a generator
         if type:
             key_identifier = '_{type}:*'.format(type=type)
+            for i in self.redis.scan_iter(key_identifier):
+                yield str(i).split(key_identifier[:-1])[1]
         else:
             key_identifier = '*'
-        for i in self.redis.scan_iter(key_identifier):
-            yield str(i).split(key_identifier[:-1])[1]
+            for i in self.redis.scan_iter(key_identifier):
+                yield str(i).split(':')[-1]
+
+    # subscription tasks
+
+    def subscribe(self, callback, pattern):
+        if not self._subscribe_thread or not self._subscribe_thread._running:
+            self._init_subscriber(callback, pattern)
+        else:
+            self._subscribe(callback, pattern)
+
+    def _init_subscriber(self, callback, pattern):
+        LOG.debug('Initializing Redis subscriber')
+        self.pubsub = self.redis.pubsub()
+        self._subscribe(callback, pattern)  # Must have a job first of thread dies
+        self._subscribe_thread = self.pubsub.run_in_thread(sleep_time=0.1)
+        LOG.debug('Subscriber Running')
+
+    def _subscribe(self, callback, pattern):
+        LOG.debug(f'Subscribing to {pattern}')
+        keyspace = f'__keyspace@{self.redis_db}__:{pattern}'
+        self.pubsub.psubscribe(**{
+            f'{keyspace}': self._subscriber_wrapper(callback, keyspace)
+        })
+        LOG.debug(f'Added {keyspace}')
+
+    # wraps the callback function so that the message instead of the event will be returned
+    def _subscriber_wrapper(self, fn, registered_channel):
+        def wrapper(msg):
+            channel = msg['channel']
+            # get _id from channel: __keyspace@0__:_test:00001 where _id is "_test:00001"
+            _id = ':'.join(channel.split(':')[1:])
+            _type = msg['data']
+            LOG.debug(f'Channel: {channel} received {_type}; registered on: {registered_channel}')
+            res = {
+                'id': _id,
+                'type': _type,
+                'data': None
+            }
+            if _type in ('set',):
+                _redis_msg = self.redis.get(_id)
+                LOG.debug(f'ID: {_id} data: {_redis_msg}')
+                res['data'] = json.loads(_redis_msg)
+            fn(res)  # Call registered function with proper data
+        return wrapper
+
+    def stop(self, *args, **kwargs):
+        if self._subscribe_thread and self._subscribe_thread._running:
+            LOG.debug('Stopping Subscriber thread.')
+            self._subscribe_thread._running = False
+            self._subscribe_thread.stop()

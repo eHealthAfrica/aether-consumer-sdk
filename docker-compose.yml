@@ -6,8 +6,8 @@ services:
   # ---------------------------------
 
   redis-test:
-    image: redis:alpine
-    command: "redis-server --requirepass ${REDIS_PASSWORD:-aredispassword}"
+    image: redis:3-alpine
+    command: ["--requirepass", "${REDIS_PASSWORD:-aredispassword}", "--notify-keyspace-events", "KA", "--appendonly", "yes"]
     env_file:
       - tests/test_environment.env
       

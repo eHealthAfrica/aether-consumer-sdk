@@ -403,6 +403,14 @@ def test_load_schema_validate(mocked_consumer):
 #
 #####
 
+redis_subscribe_delay = 0.05  # Almost realtime...
+
+redis_messages = [
+    {'id': '00001', 'a': 1},
+    {'id': '00002', 'a': 2},
+    {'id': '00022', 'a': 3}
+]
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize("name,args,expected", [
@@ -421,10 +429,7 @@ def test_redis_io(name, args, expected, task_helper):
 
 @pytest.mark.integration
 def test_redis_get_methods(task_helper):
-    tasks = [
-        {'id': '00001', 'a': 1},
-        {'id': '00002', 'a': 2},
-    ]
+    tasks = redis_messages
     _type = 'test'
     for t in tasks:
         assert(task_helper.add(t, _type) is True)
@@ -441,3 +446,76 @@ def test_redis_get_methods(task_helper):
         assert(False)
     redis_ids = list(task_helper.list(_type))
     assert(all([t['id'] in redis_ids for t in tasks]))
+    redis_ids = list(task_helper.list())
+    assert(all([t['id'] in redis_ids for t in tasks]))
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("message,sub", [
+    (redis_messages[0], {'pattern': '_test:*'}),
+    (redis_messages[1], {'pattern': '_test:00002'})
+])
+def test_redis_subscibe__succeed(task_helper, message, sub):
+    # TaskID in redis is : _{type}:{_id}
+    _type = 'test'
+    LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
+    callable = MockCallable()
+    task_helper.subscribe(callable.set_value, **sub)
+    task_helper.add(message, _type)
+    assert(task_helper.exists(message['id'], _type))
+    sleep(redis_subscribe_delay)
+    # listen for set and check value
+    assert(message['a'] == callable.value['data']['a'])
+    # delete the message
+    task_helper.remove(message['id'], _type)
+    assert(task_helper.exists(message['id'], _type) is False)
+    sleep(redis_subscribe_delay)
+    # get delete message
+    LOG.debug(callable.value)
+    assert(callable.value['data'] is None and callable.value['type'] == 'del')
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("message,sub", [
+    (redis_messages[1], {'pattern': '_test:00002_01'})
+])
+def test_redis_subscibe__fail(task_helper, message, sub):
+    _type = 'test'
+    LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
+    callable = MockCallable()
+    task_helper.subscribe(callable.set_value, **sub)
+    task_helper.add(message, _type)
+    assert(task_helper.exists(message['id'], _type))
+    sleep(redis_subscribe_delay)
+    assert(callable.value is None)
+
+
+@pytest.mark.integration
+def test_redis_subscibe_multiple__succeed(task_helper):
+    suite = [
+        (redis_messages[2], {'pattern': '_test:000*2'}, (3, None, 3), (3, 2, 3)),
+        (redis_messages[1], {'pattern': '_test:00002'}, (2, 2, 2), (2, 2, 2)),
+        (redis_messages[0], {'pattern': '_test:*'}, (2, 2, 1), (2, 2, 1)),
+    ]
+    callables = [MockCallable() for i in range(len(suite))]
+    _type = 'test'
+    for x, (message, sub, fwd, rev) in enumerate(suite):
+        task_helper.subscribe(callables[x].set_value, **sub)
+
+    for (message, sub, fwd, rev) in suite:
+        task_helper.add(message, _type)
+        LOG.debug(f'ADD {message["id"]} : {message["a"]}')
+        assert(task_helper.exists(message['id'], _type))
+        sleep(redis_subscribe_delay)
+        res = tuple([c.value.get('data').get('a') if c.value else None for c in callables])
+        LOG.debug(json.dumps([c.value['data'] if c.value else None for c in callables], indent=2))
+        assert(res == fwd)
+
+    for (message, sub, fwd, rev) in suite[::-1]:
+        task_helper.add(message, _type)
+        LOG.debug(f'ADD {message["id"]} : {message["a"]}')
+        assert(task_helper.exists(message['id'], _type))
+        sleep(redis_subscribe_delay)
+        res = tuple([c.value.get('data').get('a') if c.value else None for c in callables])
+        LOG.debug(json.dumps([c.value['data'] if c.value else None for c in callables], indent=2))
+        assert(res == rev)
