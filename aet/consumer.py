@@ -24,17 +24,22 @@ import jsonschema
 from .api import APIServer
 from .logger import LOG
 from .task import TaskHelper
+from .job import BaseJob
 
 EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
 
 class BaseConsumer(object):
 
+    _job_redis_path = '_job:*'
+    _job_class = BaseJob
+
     def __init__(self, CON_CONF, KAFKA_CONF):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         self.task = TaskHelper(self.consumer_settings)
         self.jobs = {}
+        self._init_jobs()
         self.serve_api(self.consumer_settings)
 
     # Control API
@@ -46,9 +51,8 @@ class BaseConsumer(object):
     def stop(self, *args, **kwargs):
         LOG.info('Shutting down')
         self.api.stop()
+        self.task.stop()
         LOG.info('Shutdown Complete')
-
-    # Job Functions
 
     def load_schema(self, path=None):
         path = path if path else self.consumer_settings.get('schema_path')
@@ -56,6 +60,48 @@ class BaseConsumer(object):
             raise AttributeError('No schema path available for validations.')
         with open(path) as f:
             return json.load(f)
+
+    # Job Initialization
+
+    def _init_jobs(self):
+        jobs = self.task.list(type='job')
+        for job in jobs:
+            self._init_job(job)
+        self.listen_for_job_change()
+
+    # Job Management
+
+    def _init_job(self, job):
+        LOG.debug(f'initalizing job: {job}')
+        _id = job['id']
+        if _id in self.jobs.keys():
+            LOG.debug('Job {_id} exists, updating')
+        else:
+            self._start_job(job)
+
+    def _start_job(self, job):
+        LOG.debug(f'starting job: {job}')
+        self.jobs[job['id']] = job
+
+    def _pause_job(self, job):
+        LOG.debug(f'pausing job: {job}')
+
+    def _stop_job(self, job):
+        LOG.debug(f'stopping job: {job}')
+
+    # Job Listening
+
+    def listen_for_job_change(self):
+        LOG.debug('Registering Job Change Listener')
+        self.task.subscribe(self.on_job_change, BaseConsumer._job_redis_path)
+
+    def on_job_change(self, job):
+        LOG.debug(f'Consumer received update on job: {job}')
+        _type = job['type']
+        if _type == 'set':
+            self._init_job(job)
+
+    # Job API Functions -> Delegate to Redis
 
     def validate_job(self, job, schema=None):
         schema = schema if schema else self.schema

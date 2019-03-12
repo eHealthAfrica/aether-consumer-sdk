@@ -340,11 +340,12 @@ def mocked_consumer():
 @pytest.mark.integration
 @pytest.fixture(scope="module")
 def consumer():
-    _settings = dict(settings.CONSUMER_CONFIG)
+    _settings = settings.CONSUMER_CONFIG
     # mock API from unit tests not shutdown until end avoid it's port and name
     _settings['CONSUMER_NAME'] = 'BaseConsumer'
     _settings['EXPOSE_PORT'] = 9014
     _consumer = BaseConsumer(_settings, settings.KAFKA_CONFIG)
+    _consumer.schema = {}  # blank schema
     yield _consumer
     # teardown
     _consumer.stop()
