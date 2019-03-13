@@ -73,7 +73,8 @@ class BaseJob(object):
 
 class JobManager(object):
 
-    _job_redis_path = '_job:*'
+    _job_redis_name = '_job:'
+    _job_redis_path = f'{_job_redis_name}*'
     # _job_class = BaseJob
 
     def __init__(self, task_master, job_class=BaseJob):
@@ -97,7 +98,7 @@ class JobManager(object):
 
     def _init_job(self, job):
         LOG.debug(f'initalizing job: {job}')
-        _id = job['id']
+        _id = self._get_id(job)
         if _id in self.jobs.keys():
             LOG.debug('Job {_id} exists, updating')
             self._configure_job(job)
@@ -106,7 +107,7 @@ class JobManager(object):
 
     def _start_job(self, job):
         LOG.debug(f'starting job: {job}')
-        _id = job['id']
+        _id = self._get_id(job)
         self.jobs[_id] = self.job_class(_id)
         # self.jobs[_id] = type(self)._job_class(
         #     _id
@@ -114,7 +115,7 @@ class JobManager(object):
         self._configure_job(job)
 
     def _configure_job(self, job):
-        _id = job['id']
+        _id = self._get_id(job)
         data = job['data']
         LOG.debug(f'Configuring job {_id}')
         self.jobs[_id].set_config(data)
@@ -128,11 +129,19 @@ class JobManager(object):
     # Job Listening
 
     def listen_for_job_change(self):
-        LOG.debug('Registering Job Change Listener')
-        self.task.subscribe(self.on_job_change, type(self)._job_redis_path)
+        _path = type(self)._job_redis_path
+        LOG.debug(f'Registering Job Change Listener, {_path}')
+        self.task.subscribe(self.on_job_change, _path)
 
     def on_job_change(self, job):
         LOG.debug(f'Consumer received update on job: {job}')
         _type = job['type']
         if _type == 'set':
             self._init_job(job)
+
+    # utility
+
+    def _get_id(self, job):
+        _id = job['id'].split(type(self)._job_redis_name)[1]
+        LOG.debug(f'got {_id} from {job}')
+        return _id

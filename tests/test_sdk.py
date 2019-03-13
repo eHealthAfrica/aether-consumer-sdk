@@ -393,9 +393,10 @@ def test_consumer__startup_shutdown(consumer):
 # real consumer
 @pytest.mark.integration
 def test_consumer__job_registration(consumer):
-    consumer.task.add({'id': '001', 'purpose': 'counter'}, type='job')
+    _id = '001'
+    job_def = {'id': _id, 'purpose': 'counter'}
+    consumer.task.add(job_def, type='job')
     sleep(redis_subscribe_delay)
-    _id = '_job:001'
     assert(_id in consumer.job_manager.jobs.keys())
     _job = consumer.job_manager.jobs[_id]
     assert(_job.config['purpose'] == 'counter')
@@ -404,7 +405,8 @@ def test_consumer__job_registration(consumer):
     sleep(0.5)
     assert(_job.value > old_val)
     new_purpose = 'some new purpose'
-    consumer.task.add({'id': '001', 'purpose': new_purpose}, type='job')
+    job_def['purpose'] = new_purpose
+    consumer.task.add(job_def, type='job')
     sleep(0.25)
     assert(_job.config['purpose'] == new_purpose)
     _job.stop()
