@@ -18,12 +18,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from copy import deepcopy
 import io
 import json
 import mock
+import os
 import pytest
 from time import sleep
-from copy import deepcopy
+
+
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
 from spavro.datafile import DataFileWriter
@@ -340,11 +343,10 @@ def mocked_consumer():
 @pytest.mark.integration
 @pytest.fixture(scope="module")
 def consumer():
-    _settings = settings.CONSUMER_CONFIG
     # mock API from unit tests not shutdown until end avoid it's port and name
-    _settings['CONSUMER_NAME'] = 'BaseConsumer'
-    _settings['EXPOSE_PORT'] = 9014
-    _consumer = BaseConsumer(_settings, settings.KAFKA_CONFIG)
+    os.environ['CONSUMER_NAME'] = 'BaseConsumer'
+    os.environ['EXPOSE_PORT'] = '9014'
+    _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
     _consumer.schema = {}  # blank schema
     yield _consumer
     # teardown
@@ -358,6 +360,7 @@ def consumer():
 def mocked_api(mocked_consumer):
     api = APIServer(
         mocked_consumer,
+        mocked_consumer.task,
         settings.CONSUMER_CONFIG
     )
     api.serve()

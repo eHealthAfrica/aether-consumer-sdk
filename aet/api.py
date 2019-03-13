@@ -20,6 +20,7 @@
 
 import logging
 from functools import wraps
+import json
 
 from flask import Flask, Response, request, jsonify
 from webtest.http import StopableWSGIServer
@@ -29,9 +30,10 @@ from .logger import LOG
 
 class APIServer(object):
 
-    def __init__(self, consumer, settings):
+    def __init__(self, consumer, task_manager, settings):
         self.settings = settings
         self.consumer = consumer
+        self.task = task_manager
 
     def serve(self):
         name = self.settings.get('CONSUMER_NAME')
@@ -137,10 +139,13 @@ class APIServer(object):
         self.app.logger.debug(request)
         _id = request.args.get('id', None)
         if _type == 'CREATE':
-            response = jsonify(self.consumer.add_job(job=request.get_json()))
+            if self.consumer.validate_job(request.get_json()):
+                response = self.task.add(request.get_json(), type='job')
+            else:
+                response = False
         if _type == 'DELETE':
-            response = jsonify(self.consumer.remove_job(_id))
+            response = self.task.remove(_id, type='job')
         if _type == 'READ':
-            response = jsonify(self.consumer.get_job(_id))
+            response = json.loads(self.task.get(_id, type='job'))
         with self.app.app_context():
-            return response
+            return jsonify(response)

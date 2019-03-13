@@ -21,6 +21,8 @@
 import requests
 
 from . import *  # noqa
+from aet.job import BaseJob
+
 # from aet.kafka import KafkaConsumer
 
 # # Test Suite contains both unit and integration tests
@@ -371,6 +373,8 @@ def test_api_post_calls(call, result, body, mocked_api):
 #
 #####
 
+redis_subscribe_delay = 0.05  # Almost realtime...
+
 
 # real consumer
 @pytest.mark.integration
@@ -389,9 +393,21 @@ def test_consumer__startup_shutdown(consumer):
 # real consumer
 @pytest.mark.integration
 def test_consumer__job_registration(consumer):
-    consumer.add_job({'id': '001'})
-    sleep(.25)
-    assert('_job:001' in consumer.jobs.keys())
+    consumer.task.add({'id': '001', 'purpose': 'counter'}, type='job')
+    sleep(redis_subscribe_delay)
+    _id = '_job:001'
+    assert(_id in consumer.job_manager.jobs.keys())
+    _job = consumer.job_manager.jobs[_id]
+    assert(_job.config['purpose'] == 'counter')
+    assert(isinstance(_job, BaseJob))
+    old_val = _job.value
+    sleep(0.5)
+    assert(_job.value > old_val)
+    new_purpose = 'some new purpose'
+    consumer.task.add({'id': '001', 'purpose': new_purpose}, type='job')
+    sleep(0.25)
+    assert(_job.config['purpose'] == new_purpose)
+    _job.stop()
 
 
 # mock consumer
@@ -410,8 +426,6 @@ def test_load_schema_validate(mocked_consumer):
 #  TASK TESTS
 #
 #####
-
-redis_subscribe_delay = 0.05  # Almost realtime...
 
 redis_messages = [
     {'id': '00001', 'a': 1},
