@@ -24,7 +24,7 @@ import jsonschema
 from .api import APIServer
 from .logger import LOG
 from .task import TaskHelper
-from .job import JobManager
+from .job import JobManager, BaseJob
 
 EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
@@ -35,7 +35,7 @@ class BaseConsumer(object):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         self.task = TaskHelper(self.consumer_settings)
-        self.job_manager = JobManager(self.task)
+        self.job_manager = JobManager(self.task, job_class=BaseJob)
         self.serve_api(self.consumer_settings)
 
     # Control API

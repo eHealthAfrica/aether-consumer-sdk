@@ -75,7 +75,6 @@ class JobManager(object):
 
     _job_redis_name = '_job:'
     _job_redis_path = f'{_job_redis_name}*'
-    # _job_class = BaseJob
 
     def __init__(self, task_master, job_class=BaseJob):
         self.task = task_master
@@ -84,7 +83,9 @@ class JobManager(object):
         self._init_jobs()
 
     def stop(self, *args, **kwargs):
-        pass
+        for _id, job in self.jobs.items():
+            LOG.debug(f'Stopping job {_id}')
+            job.stop()
 
     # Job Initialization
 
@@ -109,9 +110,6 @@ class JobManager(object):
         LOG.debug(f'starting job: {job}')
         _id = self._get_id(job)
         self.jobs[_id] = self.job_class(_id)
-        # self.jobs[_id] = type(self)._job_class(
-        #     _id
-        # )
         self._configure_job(job)
 
     def _configure_job(self, job):
@@ -122,9 +120,19 @@ class JobManager(object):
 
     def _pause_job(self, job):
         LOG.debug(f'pausing job: {job}')
+        _id = self._get_id(job)
+        if _id in self.jobs:
+            self.jobs[_id].status = JobStatus.PAUSED
+        else:
+            LOG.debug(f'Could not find job {_id} to pause.')
 
     def _stop_job(self, job):
         LOG.debug(f'stopping job: {job}')
+        _id = self._get_id(job)
+        if _id in self.jobs:
+            self.jobs[_id].stop()
+        else:
+            LOG.debug(f'Could not find job {_id} to stop.')
 
     # Job Listening
 
