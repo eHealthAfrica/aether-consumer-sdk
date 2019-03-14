@@ -326,6 +326,9 @@ from aet.job import BaseJob
                         ('job/delete', True),
                         ('job/get', {}),
                         ('job/list', {}),
+                        ('resource/delete', True),
+                        ('resource/get', {}),
+                        ('resource/list', {}),
                         ('healthcheck', 'healthy')
 ])
 def test_api_get_calls(call, result, mocked_api):
@@ -342,6 +345,19 @@ def test_api_get_calls(call, result, mocked_api):
         val = res.text
     finally:
         assert(val == result)
+
+
+@pytest.mark.unit
+def test_api__bad_resource_type(mocked_api):
+    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
+    pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
+    auth = requests.auth.HTTPBasicAuth(user, pw)
+    port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
+    url = f'http://localhost:{port}/super_bad_resource/list'
+    res = requests.get(url, auth=auth)
+    with pytest.raises(requests.exceptions.HTTPError):
+        res.raise_for_status()
+    assert(res.status_code == 404)
 
 
 @pytest.mark.unit

@@ -19,7 +19,7 @@
 # under the License.
 
 import logging
-from functools import wraps, partialmethod
+from functools import wraps
 import json
 
 from flask import Flask, Response, request, jsonify
@@ -30,7 +30,7 @@ from .logger import LOG
 
 class APIServer(object):
 
-    _allowed_types = ['job']  # , 'resource']
+    _allowed_types = ['job', 'resource']
 
     def __init__(self, consumer, task_manager, settings):
         self.settings = settings
@@ -77,34 +77,44 @@ class APIServer(object):
 
     # Flask Functions
 
-    # def add_endpoints(self):
-    #     # URLS configured here
-    #     # Add endpoints for all registered types
-    #     for _type in type(self)._allowed_types:
-    #         self.register(
-    #             f'{_type}/add',
-    #             partialmethod(add, _type),
-    #             methods=['POST'])
-    #         self.register(
-    #             f'{_type}/delete',
-    #             partialmethod(remove, _type))
-    #         self.register(
-    #             f'{_type}/update',
-    #             partialmethod(add, _type),
-    #             methods=['POST'])
-    #         self.register(
-    #             f'{_type}/validate',
-    #             partialmethod(validate, _type))
-    #         self.register(
-    #             f'{_type}/get',
-    #             partialmethod(get, _type))
-    #         self.register(
-    #             f'{_type}/list',
-    #             partialmethod(_list, _type))
-    #     self.register('healthcheck', self.request_healthcheck)
+    # Restrict types that can be input into API
 
-    # def register(self, route_name, fn, **options):
-    #     self.app.add_url_rule('/%s' % route_name, route_name, view_func=fn, **options)
+    def restrict_types(f):
+        @wraps(f)
+        def decorated(self, *args, **kwargs):
+            _type = kwargs.get('_type')
+            if _type not in type(self)._allowed_types:
+                return Response('Not Found', 404)
+            return f(self, *args, **kwargs)
+        return decorated
+
+    def add_endpoints(self):
+        # URLS configured here
+        # Add endpoints for all registered types
+        self.register(
+            f'<string:_type>/add',
+            self.add,
+            methods=['POST'])
+        self.register(
+            f'<string:_type>/delete',
+            self.remove)
+        self.register(
+            f'<string:_type>/update',
+            self.add,
+            methods=['POST'])
+        self.register(
+            f'<string:_type>/validate',
+            self.validate)
+        self.register(
+            f'<string:_type>/get',
+            self.get)
+        self.register(
+            f'<string:_type>/list',
+            self._list)
+        self.register('healthcheck', self.request_healthcheck)
+
+    def register(self, route_name, fn, **options):
+        self.app.add_url_rule('/%s' % route_name, route_name, view_func=fn, **options)
 
     # Basic Auth implementation
 
@@ -118,6 +128,7 @@ class APIServer(object):
     def requires_auth(f):
         @wraps(f)
         def decorated(self, *args, **kwargs):
+            LOG.error([args, kwargs])
             auth = request.authorization
             if not auth or not self.check_auth(auth.username, auth.password):
                 return self.request_authentication()
@@ -130,23 +141,28 @@ class APIServer(object):
         with self.app.app_context():
             return Response({"healthy": True})
 
+    @restrict_types
     @requires_auth
     def add(self, _type):
         return self.handle_crud(request, 'CREATE', _type)
 
+    @restrict_types
     @requires_auth
     def remove(self, _type):
         return self.handle_crud(request, 'DELETE', _type)
 
+    @restrict_types
     @requires_auth
     def get(self, _type):
         return self.handle_crud(request, 'READ', _type)
 
+    @restrict_types
     @requires_auth
     def _list(self, _type):
         with self.app.app_context():
             return jsonify(dict(self.consumer.list(_type=_type)))
 
+    @restrict_types
     @requires_auth
     def validate(self, _type):
         res = self.consumer.validate(request.get_json(), _type)
@@ -157,7 +173,7 @@ class APIServer(object):
         self.app.logger.debug(request)
         _id = request.args.get('id', None)
         if operation == 'CREATE':
-            if self.consumer.validate_job(request.get_json()):
+            if self.consumer.validate(request.get_json(), _type=_type):
                 response = self.task.add(request.get_json(), type='job')
             else:
                 response = False
