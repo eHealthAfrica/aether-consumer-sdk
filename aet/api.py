@@ -19,7 +19,7 @@
 # under the License.
 
 import logging
-from functools import wraps
+from functools import wraps, partialmethod
 import json
 
 from flask import Flask, Response, request, jsonify
@@ -29,6 +29,8 @@ from .logger import LOG
 
 
 class APIServer(object):
+
+    _allowed_types = ['job']  # , 'resource']
 
     def __init__(self, consumer, task_manager, settings):
         self.settings = settings
@@ -75,18 +77,34 @@ class APIServer(object):
 
     # Flask Functions
 
-    def add_endpoints(self):
-        # URLS configured here
-        self.register('jobs/add', self.add_job, methods=['POST'])
-        self.register('jobs/delete', self.remove_job)
-        self.register('jobs/update', self.add_job, methods=['POST'])
-        self.register('jobs/validate', self.validate_job)
-        self.register('jobs/get', self.get_job)
-        self.register('jobs/list', self.list_jobs)
-        self.register('healthcheck', self.request_healthcheck)
+    # def add_endpoints(self):
+    #     # URLS configured here
+    #     # Add endpoints for all registered types
+    #     for _type in type(self)._allowed_types:
+    #         self.register(
+    #             f'{_type}/add',
+    #             partialmethod(add, _type),
+    #             methods=['POST'])
+    #         self.register(
+    #             f'{_type}/delete',
+    #             partialmethod(remove, _type))
+    #         self.register(
+    #             f'{_type}/update',
+    #             partialmethod(add, _type),
+    #             methods=['POST'])
+    #         self.register(
+    #             f'{_type}/validate',
+    #             partialmethod(validate, _type))
+    #         self.register(
+    #             f'{_type}/get',
+    #             partialmethod(get, _type))
+    #         self.register(
+    #             f'{_type}/list',
+    #             partialmethod(_list, _type))
+    #     self.register('healthcheck', self.request_healthcheck)
 
-    def register(self, route_name, fn, **options):
-        self.app.add_url_rule('/%s' % route_name, route_name, view_func=fn, **options)
+    # def register(self, route_name, fn, **options):
+    #     self.app.add_url_rule('/%s' % route_name, route_name, view_func=fn, **options)
 
     # Basic Auth implementation
 
@@ -113,39 +131,39 @@ class APIServer(object):
             return Response({"healthy": True})
 
     @requires_auth
-    def add_job(self):
-        return self.handle_job_crud(request, 'CREATE')
+    def add(self, _type):
+        return self.handle_crud(request, 'CREATE', _type)
 
     @requires_auth
-    def remove_job(self):
-        return self.handle_job_crud(request, 'DELETE')
+    def remove(self, _type):
+        return self.handle_crud(request, 'DELETE', _type)
 
     @requires_auth
-    def get_job(self):
-        return self.handle_job_crud(request, 'READ')
+    def get(self, _type):
+        return self.handle_crud(request, 'READ', _type)
 
     @requires_auth
-    def list_jobs(self):
+    def _list(self, _type):
         with self.app.app_context():
-            return jsonify(dict(self.consumer.list_jobs()))
+            return jsonify(dict(self.consumer.list(_type=_type)))
 
     @requires_auth
-    def validate_job(self):
-        res = self.consumer.validate_job(**request.data)
+    def validate(self, _type):
+        res = self.consumer.validate(request.get_json(), _type)
         with self.app.app_context():
             return jsonify({'valid': res})
 
-    def handle_job_crud(self, request, _type):
+    def handle_crud(self, request, operation, _type):
         self.app.logger.debug(request)
         _id = request.args.get('id', None)
-        if _type == 'CREATE':
+        if operation == 'CREATE':
             if self.consumer.validate_job(request.get_json()):
                 response = self.task.add(request.get_json(), type='job')
             else:
                 response = False
-        if _type == 'DELETE':
+        if operation == 'DELETE':
             response = self.task.remove(_id, type='job')
-        if _type == 'READ':
+        if operation == 'READ':
             response = json.loads(self.task.get(_id, type='job'))
         with self.app.app_context():
             return jsonify(response)

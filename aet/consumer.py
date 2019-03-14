@@ -60,8 +60,8 @@ class BaseConsumer(object):
 
     # Job API Functions that aren't pure delegation to Redis
 
-    def validate_job(self, job, schema=None):
-        schema = schema if schema else self.schema
+    def validate(self, job, _type=None, schema=None):
+        schema = schema if schema else self.schemas.get(_type, {})
         try:
             jsonschema.validate(job, schema)  # Throws ValidationErrors
             return True
@@ -69,13 +69,10 @@ class BaseConsumer(object):
             LOG.debug(err)
             return False
 
-    def list_jobs(self):
+    def list(self, _type=None):
         status = {}
-        for job_id in self.task.list(type='job'):
-            if job_id in self.job_manager.jobs:
-                status[job_id] = str(self.job_manager.jobs.get(job_id).status)
-            else:
-                status[job_id] = 'unknown'
+        for _id in self.task.list(type=_type):
+            status[_id] = self.job_manager.get_status(_type, _id)
         return status
 
 

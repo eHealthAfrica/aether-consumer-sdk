@@ -80,6 +80,7 @@ class JobManager(object):
         self.task = task_master
         self.job_class = job_class
         self.jobs = {}
+        self.resources = {}
         self._init_jobs()
 
     def stop(self, *args, **kwargs):
@@ -153,3 +154,7 @@ class JobManager(object):
         _id = job['id'].split(type(self)._job_redis_name)[1]
         LOG.debug(f'got {_id} from {job}')
         return _id
+
+    def get_status(self, _type, _id):
+        # There are likely different ways of getting the status for each type
+        return 'unknown'

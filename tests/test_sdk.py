@@ -323,9 +323,9 @@ from aet.job import BaseJob
 
 @pytest.mark.unit
 @pytest.mark.parametrize("call,result", [
-                        ('jobs/delete', True),
-                        ('jobs/get', {}),
-                        ('jobs/list', {}),
+                        ('job/delete', True),
+                        ('job/get', {}),
+                        ('job/list', {}),
                         ('healthcheck', 'healthy')
 ])
 def test_api_get_calls(call, result, mocked_api):
@@ -346,10 +346,10 @@ def test_api_get_calls(call, result, mocked_api):
 
 @pytest.mark.unit
 @pytest.mark.parametrize("call,result,body", [
-                        ('jobs/add', False, {'a': 'b'}),
-                        ('jobs/update', False, {'a': 'b'}),
-                        ('jobs/add', True, {}),
-                        ('jobs/update', True, {})
+                        ('job/add', False, {'a': 'b'}),
+                        ('job/update', False, {'a': 'b'}),
+                        ('job/add', True, {}),
+                        ('job/update', True, {})
 ])
 def test_api_post_calls(call, result, body, mocked_api):
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
@@ -419,8 +419,8 @@ def test_load_schema_validate(mocked_consumer):
     permissive = c.load_schema('/code/conf/schema/permissive.json')
     strict = c.load_schema('/code/conf/schema/strict.json')
     job = {'a': 1}
-    assert(c.validate_job(job, permissive) is True)
-    assert(c.validate_job(job, strict) is False)
+    assert(c.validate(job, schema=permissive) is True)
+    assert(c.validate(job, schema=strict) is False)
 
 
 ######
