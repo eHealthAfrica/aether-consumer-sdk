@@ -365,7 +365,11 @@ def test_api__bad_resource_type(mocked_api):
                         ('job/add', False, {'a': 'b'}),
                         ('job/update', False, {'a': 'b'}),
                         ('job/add', True, {}),
-                        ('job/update', True, {})
+                        ('job/update', True, {}),
+                        ('resource/add', False, {'a': 'b'}),
+                        ('resource/update', False, {'a': 'b'}),
+                        ('resource/add', True, {}),
+                        ('resource/update', True, {})
 ])
 def test_api_post_calls(call, result, body, mocked_api):
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
@@ -423,9 +427,25 @@ def test_consumer__job_registration(consumer):
     new_purpose = 'some new purpose'
     job_def['purpose'] = new_purpose
     consumer.task.add(job_def, type='job')
-    sleep(0.25)
+    sleep(redis_subscribe_delay)
     assert(_job.config['purpose'] == new_purpose)
-    _job.stop()
+    removed = consumer.task.remove(_id, type='job')
+    assert(removed is True)
+    sleep(redis_subscribe_delay)
+    assert(_id not in consumer.job_manager.jobs.keys())
+
+
+# real consumer
+@pytest.mark.integration
+def test_consumer__job_persistence(consumer):
+    _id = '001'
+    job_def = {'id': _id, 'purpose': 'counter'}
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    consumer.job_manager.stop()
+    consumer.job_manager._init_jobs()
+    assert(_id in consumer.job_manager.jobs.keys())
 
 
 # mock consumer

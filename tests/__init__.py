@@ -102,7 +102,10 @@ class MockConsumer(BaseConsumer):
         self.kafka_settings = KAFKA_CONF
         self.children = []
         self.task = MockTaskHelper()
-        self.schemas = {'job': MockConsumer.STRICT_SCHEMA}
+        self.schemas = {
+            'job': MockConsumer.STRICT_SCHEMA,
+            'resource': MockConsumer.STRICT_SCHEMA
+        }
 
 
 def send_plain_messages(producer, topic, schema, messages, encoding, is_json=True):

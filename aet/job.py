@@ -73,7 +73,8 @@ class BaseJob(object):
 
 class JobManager(object):
 
-    _job_redis_name = '_job:'
+    _job_redis_type = 'job'
+    _job_redis_name = f'_{_job_redis_type}:'
     _job_redis_path = f'{_job_redis_name}*'
 
     def __init__(self, task_master, job_class=BaseJob):
@@ -91,8 +92,10 @@ class JobManager(object):
     # Job Initialization
 
     def _init_jobs(self):
-        jobs = self.task.list(type='job')
-        for job in jobs:
+        jobs = self.task.list(type=type(self)._job_redis_type)
+        for _id in jobs:
+            job = self.task.get(_id, type=type(self)._job_redis_type)
+            LOG.debug(f'init job: {job}')
             self._init_job(job)
         self.listen_for_job_change()
 
@@ -115,25 +118,27 @@ class JobManager(object):
 
     def _configure_job(self, job):
         _id = self._get_id(job)
-        data = job['data']
         LOG.debug(f'Configuring job {_id}')
-        self.jobs[_id].set_config(data)
+        self.jobs[_id].set_config(job)
 
-    def _pause_job(self, job):
-        LOG.debug(f'pausing job: {job}')
-        _id = self._get_id(job)
+    def _pause_job(self, _id):
+        LOG.debug(f'pausing job: {_id}')
         if _id in self.jobs:
             self.jobs[_id].status = JobStatus.PAUSED
         else:
             LOG.debug(f'Could not find job {_id} to pause.')
 
-    def _stop_job(self, job):
-        LOG.debug(f'stopping job: {job}')
-        _id = self._get_id(job)
+    def _stop_job(self, _id):
+        LOG.debug(f'stopping job: {_id}')
         if _id in self.jobs:
             self.jobs[_id].stop()
         else:
             LOG.debug(f'Could not find job {_id} to stop.')
+
+    def _remove_job(self, _id):
+        LOG.debug(f'removing job: {_id}')
+        self._stop_job(_id)
+        del self.jobs[_id]
 
     # Job Listening
 
@@ -143,16 +148,24 @@ class JobManager(object):
         self.task.subscribe(self.on_job_change, _path)
 
     def on_job_change(self, job):
-        LOG.debug(f'Consumer received update on job: {job}')
         _type = job['type']
+        LOG.debug(f'Consumer received cmd: "{_type}" on job: {job}')
         if _type == 'set':
+            job = job['data']
             self._init_job(job)
+        elif _type == 'del':
+            _id = self._get_id(job)  # just the id
+            self._remove_job(_id)
 
     # utility
 
     def _get_id(self, job):
-        _id = job['id'].split(type(self)._job_redis_name)[1]
-        LOG.debug(f'got {_id} from {job}')
+        # from a signal
+        if all([i in job.keys() for i in ('id', 'data', 'type')]):
+            _id = job['id'].split(type(self)._job_redis_name)[1]
+        # the plain job
+        else:
+            _id = job['id']
         return _id
 
     def get_status(self, _type, _id):
