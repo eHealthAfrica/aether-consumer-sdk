@@ -176,12 +176,12 @@ class APIServer(object):
         _id = request.args.get('id', None)
         if operation == 'CREATE':
             if self.consumer.validate(request.get_json(), _type=_type):
-                response = self.task.add(request.get_json(), type='job')
+                response = self.task.add(request.get_json(), type=_type)
             else:
                 response = False
         if operation == 'DELETE':
-            response = self.task.remove(_id, type='job')
+            response = self.task.remove(_id, type=_type)
         if operation == 'READ':
-            response = json.loads(self.task.get(_id, type='job'))
+            response = json.loads(self.task.get(_id, type=_type))
         with self.app.app_context():
             return jsonify(response)
