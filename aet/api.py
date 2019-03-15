@@ -105,7 +105,8 @@ class APIServer(object):
             methods=['POST'])
         self.register(
             '<string:_type>/validate',
-            self.validate)
+            self.validate,
+            methods=['POST'])
         self.register(
             '<string:_type>/get',
             self.get)
