@@ -18,11 +18,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from copy import deepcopy
 import enum
+from functools import partialmethod
 from time import sleep
 from threading import Thread
 
 from .logger import LOG
+from .jsonpath import CachedParser
 
 
 class JobStatus(enum.Enum):
@@ -37,15 +40,18 @@ class BaseJob(object):
     def __init__(self, _id):
         self._id = _id
         self.status = JobStatus.PAUSED
+        self.config = None
+        self.resources = {}
         self.value = 0
-        self._thread = Thread(target=self._run)
-        self._thread.start()
+        self._start()
 
-    def set_config(self, config, resource=None):
+    def set_config(self, config):
         LOG.debug(f'Job {self._id} got new config {config}')
         self.config = config
-        if resource:
-            self.resource = resource
+        self.status = JobStatus.RECONFIGURE
+
+    def set_resource(self, resource, _type):
+        self.resouces[_type] = resource
         self.status = JobStatus.RECONFIGURE
 
     def _run(self):
@@ -55,17 +61,44 @@ class BaseJob(object):
                     sleep(0.25)  # wait for the status to change
                     continue
                 if self.status is JobStatus.RECONFIGURE:
-                    # Take the new configuration into account
+                    # Take the new configuration into account if anything needs to happen
+                    # before the work part of the cycles. New DB connection etc.
+                    self._handle_new_settings()
                     LOG.debug(f'Job {self._id} is using a new configuration.')
                     # Ok, all done and back to normal.
                     self.status = JobStatus.NORMAL
                     continue
                 # Do something useful here
-                self.value += 1
-                sleep(0.25)
+                # get a deepcopy of config & resources so they don't mutate mid-process
+                _config, _resources = self._copy_settings()
+                messages = self._get_messages(_config, _resources)
+                if messages:
+                    self._handle_messages(_config, _resources)
             LOG.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
             LOG.critical(f'job {self._id} failed with critical error {fatal}')
+            self.status = JobStatus.DEAD
+
+    def _handle_new_settings(self):
+        # block and handle changes to self.config or self.resources
+        pass
+
+    def _copy_settings(self):
+        return deepcopy(self.config), deepcopy(self.resources)
+
+    def _get_messages(self, config, resources):
+        # probably needs custom implementation for each consumer
+        return [1, 2]  # get from Kafka or...
+
+    def _handle_messages(self, config, resources):
+        # probably needs custom implementation for each consumer
+        # Do something based on the messages
+        self.value += 1
+
+    def _start(self):
+        self.status = JobStatus.NORMAL
+        self._thread = Thread(target=self._run)
+        self._thread.start()
 
     def stop(self, *args, **kwargs):
         self.status = JobStatus.STOPPED
@@ -76,6 +109,15 @@ class JobManager(object):
     _job_redis_type = 'job'
     _job_redis_name = f'_{_job_redis_type}:'
     _job_redis_path = f'{_job_redis_name}*'
+    # Any type here needs to be registered in the API as APIServer._allowed_types
+    _resources = {
+        'resource': {
+            'redis_type': 'resource',
+            'redis_name': '_resource:',
+            'redis_path': '_resource:*',  # Where to subscribe for this type in Redis
+            'job_path': '$.resources'  # Where to find the resource reference in the job
+        }
+    }
 
     def __init__(self, task_master, job_class=BaseJob):
         self.task = task_master
@@ -103,7 +145,7 @@ class JobManager(object):
 
     def _init_job(self, job):
         LOG.debug(f'initalizing job: {job}')
-        _id = self._get_id(job)
+        _id = job['id']
         if _id in self.jobs.keys():
             LOG.debug('Job {_id} exists, updating')
             self._configure_job(job)
@@ -116,10 +158,32 @@ class JobManager(object):
         self.jobs[_id] = self.job_class(_id)
         self._configure_job(job)
 
-    def _configure_job(self, job):
-        _id = self._get_id(job)
+    def _configure_job(self, job_definition):
+        _id = self._get_id(job_definition)
         LOG.debug(f'Configuring job {_id}')
-        self.jobs[_id].set_config(job)
+        try:
+            self._configure_job_resources(job_definition)
+        except AttributeError as aer:
+            LOG.critical(f'Job {_id} missing required resource, stopping: {aer}')
+            self.jobs[_id].stop()
+            return
+        self.jobs[_id].set_config(job_definition)
+
+    def _configure_job_resources(self, job_definition):
+        try:
+            job_id = job_definition['id']
+            type_paths = [k, r['job_path'] for k, r in type(self)._resources.items()]
+            for _type, path in type_paths:
+                matches = CachedParser.find(path, job_definition)
+                if not matches:
+                    return  # no dependant resource of this type
+                resource_id = [m.value for m in matches][0]
+                LOG.debug(f'Job : {job_id} depends on resource {_type}:{resource_id}')
+                self._register_resource_listener(
+                    _type,
+                    resource_id,
+                    self.jobs[job_id]
+                )
 
     def _pause_job(self, _id):
         LOG.debug(f'pausing job: {_id}')
@@ -146,6 +210,44 @@ class JobManager(object):
         _path = type(self)._job_redis_path
         LOG.debug(f'Registering Job Change Listener, {_path}')
         self.task.subscribe(self.on_job_change, _path)
+
+    def listen_for_resource_change(self):
+        for _type, rule in type(self)._resources.items():
+            LOG.debug(f'Listening for resource {_type} on {redis_path}')
+            redis_path = rule['redis_path']
+            # use a partial to keep from having to inspect the message source later
+            callback = partialmethod(on_resource_change, _type)
+            self.task.subscribe(on_resource_change, redis_path)
+
+    def _register_resource_listener(self, _type, resource_id, job):
+        # register callbacks for job resource listeners
+        #make sure structures exist for this _type & resource_id
+        self.resources[_type] = self.resources.get(_type, {})
+        self.resources[_type][resource_id] =  self.resources[_type].get(resource_id, [])
+        # see if this job is already listening to this resource to avoid duplicates
+        listening_jobs = self.resources[_type][resource_id]
+        if job._id not in [j._id for j in listening_jobs]:
+            LOG.debug(f'Job {job_id} already subscribed to {_type} : {resource_id}')
+            return
+        # add job reference to listening jobs
+        listening_jobs.append(job)
+        # TODO KILL kill reference check
+        assert(job._id in [j._id for j in self.resources[_type][resource_id]])
+
+    def on_resource_change(self, _type, msg):
+        # find out which jobs this pertains to
+        LOG.debug(f'Consumer resource update : "{_type}": {_msg}')
+        op_type = msg['type']  # Operation type
+        resource_id = msg['id'].split(self.resources[_type]['redis_name'])[1]
+        # find jobs this pertains to
+        jobs = self.resource[_type][resource_id]
+        for job in jobs:
+            if op_type == 'set':
+                LOG.debug(f'Sending update to subscriber {job_id}')
+                job.set_resource(msg['data'])
+            elif op_type == 'del':
+                LOG.debug(f'Job: {job.id} has unmet resource dependency {_type}:{_id}. Stopping.')
+                job.stop()
 
     def on_job_change(self, job):
         _type = job['type']
