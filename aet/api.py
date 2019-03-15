@@ -78,6 +78,7 @@ class APIServer(object):
     # Flask Functions
 
     # Restrict types that can be input into API
+    #   Set in Class._allowed_types
 
     def restrict_types(f):
         @wraps(f)
@@ -92,24 +93,24 @@ class APIServer(object):
         # URLS configured here
         # Add endpoints for all registered types
         self.register(
-            f'<string:_type>/add',
+            '<string:_type>/add',
             self.add,
             methods=['POST'])
         self.register(
-            f'<string:_type>/delete',
+            '<string:_type>/delete',
             self.remove)
         self.register(
-            f'<string:_type>/update',
+            '<string:_type>/update',
             self.add,
             methods=['POST'])
         self.register(
-            f'<string:_type>/validate',
+            '<string:_type>/validate',
             self.validate)
         self.register(
-            f'<string:_type>/get',
+            '<string:_type>/get',
             self.get)
         self.register(
-            f'<string:_type>/list',
+            '<string:_type>/list',
             self._list)
         self.register('healthcheck', self.request_healthcheck)
 
