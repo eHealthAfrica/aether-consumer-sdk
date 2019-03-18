@@ -21,8 +21,15 @@
 from datetime import datetime
 import json
 import redis
+from typing import NamedTuple, Callable
 
 from .logger import LOG
+
+
+class Task(NamedTuple):
+    id: str
+    type: str
+    data: dict = {}
 
 
 class TaskHelper(object):
@@ -113,22 +120,27 @@ class TaskHelper(object):
         LOG.debug(f'Added {keyspace}')
 
     # wraps the callback function so that the message instead of the event will be returned
-    def _subscriber_wrapper(self, fn, registered_channel):
-        def wrapper(msg):
+    def _subscriber_wrapper(self, fn: Callable, registered_channel: str) -> Callable:
+        def wrapper(msg) -> None:
+            LOG.debug(f'callback got message: {msg}')
             channel = msg['channel']
             # get _id from channel: __keyspace@0__:_test:00001 where _id is "_test:00001"
             _id = ':'.join(channel.split(':')[1:])
-            _type = msg['data']
+            _type = msg['type']
             LOG.debug(f'Channel: {channel} received {_type}; registered on: {registered_channel}')
-            res = {
-                'id': _id,
-                'type': _type,
-                'data': None
-            }
             if _type in ('set',):
                 _redis_msg = self.redis.get(_id)
+                res = Task(
+                    id=_id,
+                    type=_type,
+                    data=json.loads(_redis_msg)
+                )
                 LOG.debug(f'ID: {_id} data: {_redis_msg}')
-                res['data'] = json.loads(_redis_msg)
+            else:
+                res = Task(
+                    id=_id,
+                    type=_type
+                )
             fn(res)  # Call registered function with proper data
         return wrapper
 

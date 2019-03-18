@@ -23,9 +23,11 @@ import enum
 from functools import partialmethod
 from time import sleep
 from threading import Thread
+from typing import Dict, Optional
 
 from .logger import LOG
 from .jsonpath import CachedParser
+from .task import Task
 
 
 class JobStatus(enum.Enum):
@@ -143,7 +145,7 @@ class JobManager(object):
 
     # Job Management
 
-    def _init_job(self, job):
+    def _init_job(self, job: dict) -> None:
         LOG.debug(f'initalizing job: {job}')
         _id = job['id']
         if _id in self.jobs.keys():
@@ -152,54 +154,53 @@ class JobManager(object):
         else:
             self._start_job(job)
 
-    def _start_job(self, job):
+    def _start_job(self, job: dict) -> None:
         LOG.debug(f'starting job: {job}')
-        _id = self._get_id(job)
+        _id = self._get_id(job=job)
         self.jobs[_id] = self.job_class(_id)
         self._configure_job(job)
 
-    def _configure_job(self, job_definition):
-        _id = self._get_id(job_definition)
+    def _configure_job(self, job: dict):
+        _id = self._get_id(job=job)
         LOG.debug(f'Configuring job {_id}')
         try:
-            self._configure_job_resources(job_definition)
+            self._configure_job_resources(job)
         except AttributeError as aer:
             LOG.critical(f'Job {_id} missing required resource, stopping: {aer}')
             self.jobs[_id].stop()
             return
-        self.jobs[_id].set_config(job_definition)
+        self.jobs[_id].set_config(job)
 
-    def _configure_job_resources(self, job_definition):
-        try:
-            job_id = job_definition['id']
-            type_paths = [k, r['job_path'] for k, r in type(self)._resources.items()]
-            for _type, path in type_paths:
-                matches = CachedParser.find(path, job_definition)
-                if not matches:
-                    return  # no dependant resource of this type
-                resource_id = [m.value for m in matches][0]
-                LOG.debug(f'Job : {job_id} depends on resource {_type}:{resource_id}')
-                self._register_resource_listener(
-                    _type,
-                    resource_id,
-                    self.jobs[job_id]
-                )
+    def _configure_job_resources(self, job: dict) -> None:
+        job_id = job['id']
+        type_paths = [(k, r['job_path']) for k, r in type(self)._resources.items()]
+        for _type, path in type_paths:
+            matches = CachedParser.find(path, job)
+            if not matches:
+                return  # no dependant resource of this type
+            resource_id = [m.value for m in matches][0]
+            LOG.debug(f'Job : {job_id} depends on resource {_type}:{resource_id}')
+            self._register_resource_listener(
+                _type,
+                resource_id,
+                self.jobs[job_id]
+            )
 
-    def _pause_job(self, _id):
+    def _pause_job(self, _id: str) -> None:
         LOG.debug(f'pausing job: {_id}')
         if _id in self.jobs:
             self.jobs[_id].status = JobStatus.PAUSED
         else:
             LOG.debug(f'Could not find job {_id} to pause.')
 
-    def _stop_job(self, _id):
+    def _stop_job(self, _id: str) -> None:
         LOG.debug(f'stopping job: {_id}')
         if _id in self.jobs:
             self.jobs[_id].stop()
         else:
             LOG.debug(f'Could not find job {_id} to stop.')
 
-    def _remove_job(self, _id):
+    def _remove_job(self, _id: str) -> None:
         LOG.debug(f'removing job: {_id}')
         self._stop_job(_id)
         del self.jobs[_id]
@@ -213,60 +214,69 @@ class JobManager(object):
 
     def listen_for_resource_change(self):
         for _type, rule in type(self)._resources.items():
-            LOG.debug(f'Listening for resource {_type} on {redis_path}')
             redis_path = rule['redis_path']
+            LOG.debug(f'Listening for resource {_type} on {redis_path}')
             # use a partial to keep from having to inspect the message source later
-            callback = partialmethod(on_resource_change, _type)
-            self.task.subscribe(on_resource_change, redis_path)
+            callback = partialmethod(self.on_resource_change, _type)
+            self.task.subscribe(callback, redis_path)
 
-    def _register_resource_listener(self, _type, resource_id, job):
+    def _register_resource_listener(
+        self,
+        _type: str,
+        resource_id: str,
+        job: BaseJob
+    ) -> None:
+
         # register callbacks for job resource listeners
-        #make sure structures exist for this _type & resource_id
+        # make sure structures exist for this _type & resource_id
         self.resources[_type] = self.resources.get(_type, {})
-        self.resources[_type][resource_id] =  self.resources[_type].get(resource_id, [])
+        self.resources[_type][resource_id] = self.resources[_type].get(resource_id, [])
         # see if this job is already listening to this resource to avoid duplicates
         listening_jobs = self.resources[_type][resource_id]
         if job._id not in [j._id for j in listening_jobs]:
-            LOG.debug(f'Job {job_id} already subscribed to {_type} : {resource_id}')
+            LOG.debug(f'Job {job._id} already subscribed to {_type} : {resource_id}')
             return
         # add job reference to listening jobs
         listening_jobs.append(job)
         # TODO KILL kill reference check
         assert(job._id in [j._id for j in self.resources[_type][resource_id]])
 
-    def on_resource_change(self, _type, msg):
+    def on_resource_change(
+        self,
+        _type: str,
+        msg: Task
+    ) -> None:
+
         # find out which jobs this pertains to
-        LOG.debug(f'Consumer resource update : "{_type}": {_msg}')
-        op_type = msg['type']  # Operation type
-        resource_id = msg['id'].split(self.resources[_type]['redis_name'])[1]
+        LOG.debug(f'Consumer resource update : "{_type}": {msg}')
+        resource_id = msg.id.split(self.resources[_type]['redis_name'])[1]
         # find jobs this pertains to
-        jobs = self.resource[_type][resource_id]
+        jobs = self.resources[_type][resource_id]
         for job in jobs:
-            if op_type == 'set':
-                LOG.debug(f'Sending update to subscriber {job_id}')
-                job.set_resource(msg['data'])
-            elif op_type == 'del':
-                LOG.debug(f'Job: {job.id} has unmet resource dependency {_type}:{_id}. Stopping.')
+            if msg.type == 'set':
+                LOG.debug(f'Sending update to subscriber {job._id}')
+                job.set_resource(msg.data)
+            elif msg.type == 'del':
+                LOG.debug(f'Job: {job._id} has unmet resource dependency'
+                          f' {_type}:{msg.id}. Stopping.')
                 job.stop()
 
-    def on_job_change(self, job):
-        _type = job['type']
-        LOG.debug(f'Consumer received cmd: "{_type}" on job: {job}')
-        if _type == 'set':
-            job = job['data']
+    def on_job_change(self, msg: Task) -> None:
+        LOG.debug(f'Consumer received cmd: "{msg.type}" on job: {msg.id}')
+        if msg.type == 'set':
+            job = msg.data
             self._init_job(job)
-        elif _type == 'del':
-            _id = self._get_id(job)  # just the id
+        elif msg.type == 'del':
+            _id = self._get_id(msg)  # just the id
             self._remove_job(_id)
 
     # utility
 
-    def _get_id(self, job):
+    def _get_id(self, task: Optional[Task] = None, job: Optional[Dict] = None):
         # from a signal
-        if all([i in job.keys() for i in ('id', 'data', 'type')]):
-            _id = job['id'].split(type(self)._job_redis_name)[1]
-        # the plain job
-        else:
+        if task:
+            _id = task.id.split(type(self)._job_redis_name)[1]
+        elif job:
             _id = job['id']
         return _id
 
