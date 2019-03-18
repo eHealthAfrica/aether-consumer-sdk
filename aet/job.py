@@ -53,18 +53,24 @@ class BaseJob(object):
     def set_config(self, config: dict) -> None:
         LOG.debug(f'Job {self._id} got new config {config}')
         self.config = config
-        self.status = JobStatus.RECONFIGURE
+        if self.status is JobStatus.STOPPED:
+            self._start()
+        else:
+            self.status = JobStatus.RECONFIGURE
 
     def set_resource(self, _type: str, resource: dict) -> None:
         LOG.debug(f'Job {self._id} got updated resource:  {resource}')
         self.resources[_type] = resource
-        self.status = JobStatus.RECONFIGURE
+        if self.status is JobStatus.STOPPED:
+            self._start()
+        else:
+            self.status = JobStatus.RECONFIGURE
 
     def _run(self):
         try:
             while self.status is not JobStatus.STOPPED:
                 if self.status is JobStatus.PAUSED:
-                    sleep(0.25)  # wait for the status to change
+                    sleep(0.01)  # wait for the status to change
                     continue
                 if self.status is JobStatus.RECONFIGURE:
                     # Take the new configuration into account if anything needs to happen
@@ -102,6 +108,7 @@ class BaseJob(object):
         self.value += 1
 
     def _start(self):
+        LOG.debug(f'Job {self._id} starting')
         self.status = JobStatus.NORMAL
         self._thread = Thread(target=self._run)
         self._thread.start()

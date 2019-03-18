@@ -506,14 +506,18 @@ def test_consumer__job_registration_hanging_resource_reference(consumer: BaseCon
         'purpose': 'counter',
         'resources': f'res-{_id}'
     }
+    # add job with missing resource
     consumer.task.add(job_def, type='job')
     sleep(redis_subscribe_delay)
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    # job starts dead
+    assert(_job.status is JobStatus.STOPPED)
+    # add missing resource
     consumer.task.add(res_def, type='resource')
     sleep(redis_subscribe_delay)
-    assert(_id in consumer.job_manager.jobs.keys())
-    _job: BaseJob = consumer.job_manager.jobs[_id]
     # job got resource
     assert(_job.resources['resource']['id'] == res_def['id'])
+    # remove job, leave resource
     removed = consumer.task.remove(_id, type='job')
     sleep(redis_subscribe_delay)
     assert(removed is True)
@@ -526,14 +530,56 @@ def test_consumer__job_registration_hanging_resource_reference(consumer: BaseCon
     consumer.task.add(res_def, type='resource')
     # this shouldn't raise an error on the now missing job
     sleep(redis_subscribe_delay)
-    # re add the job
+    # add the job again
     consumer.task.add(job_def, type='job')
     sleep(redis_subscribe_delay)
     _job = consumer.job_manager.jobs[_id]
-    # resource still correct with new version
+    assert(_job.status is JobStatus.NORMAL)
+    # resource still correct with new version in resurrected job
     assert(_job.resources['resource']['id'] == res_def['id'])
     removed = consumer.task.remove(_id, type='job')
     removed = consumer.task.remove(res_def['id'], type='resource')
+
+# real consumer
+@pytest.mark.integration
+def test_consumer__job_multicast_receive_resource(consumer: BaseConsumer):
+    redis_subscribe_delay = 1  # lots of checking on job change
+    _id = '005'
+    res_def = {
+        'id': f'res-{_id}',
+        'value': 1000000
+    }
+    job_def1 = {
+        'id': f'{_id}-1',
+        'resources': f'res-{_id}'
+    }
+    job_def2 = {
+        'id': f'{_id}-2',
+        'resources': f'res-{_id}'
+    }
+    # add job with missing resource
+    consumer.task.add(job_def1, type='job')
+    consumer.task.add(job_def2, type='job')
+    sleep(redis_subscribe_delay)
+    job1: BaseJob = consumer.job_manager.jobs['005-1']
+    job2: BaseJob = consumer.job_manager.jobs['005-2']
+    # job starts dead
+    assert(job1.status is JobStatus.STOPPED)
+    assert(job2.status is JobStatus.STOPPED)
+    # add missing resource
+    consumer.task.add(res_def, type='resource')
+    sleep(redis_subscribe_delay)
+    # job got resource
+    assert(job1.status is JobStatus.NORMAL)
+    assert(job2.status is JobStatus.NORMAL)
+    # resource still correct with new version in resurrected job
+    removed = consumer.task.remove(res_def['id'], type='resource')
+    sleep(redis_subscribe_delay)
+    assert(job1.status is JobStatus.STOPPED)
+    assert(job2.status is JobStatus.STOPPED)
+    removed = consumer.task.remove('005-1', type='job')
+    removed = consumer.task.remove('005-2', type='job')
+    assert(removed is True)
 
 # real consumer
 @pytest.mark.integration
@@ -623,7 +669,7 @@ def test_redis_subscibe__succeed(task_helper, message, sub):
     task_helper.subscribe(callable.set_value, **sub)
     task_helper.add(message, _type)
     assert(task_helper.exists(message['id'], _type))
-    sleep(redis_subscribe_delay)
+    sleep(.25)
     # listen for set and check value
     assert(message['a'] == callable.value.data['a'])
     # delete the message
@@ -653,9 +699,9 @@ def test_redis_subscibe__fail(task_helper, message, sub):
 @pytest.mark.integration
 def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
     suite = [
-        (redis_messages[2], {'pattern': '_test:000*2'}, (3, None, 3), (3, 2, 3)),
-        (redis_messages[1], {'pattern': '_test:00002'}, (2, 2, 2), (2, 2, 2)),
-        (redis_messages[0], {'pattern': '_test:*'}, (2, 2, 1), (2, 2, 1)),
+        ({'id': '00022', 'a': 3}, {'pattern': '_test:000*2'}, (3, None, 3), (3, 2, 3)),
+        ({'id': '00002', 'a': 2}, {'pattern': '_test:00002'}, (2, 2, 2), (2, 2, 2)),
+        ({'id': '00001', 'a': 1}, {'pattern': '_test:*'}, (2, 2, 1), (2, 2, 1)),
     ]
     callables: List[MockCallable] = [MockCallable() for i in range(len(suite))]
     _type = 'test'
@@ -666,7 +712,7 @@ def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
         task_helper.add(message, _type)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
         assert(task_helper.exists(message['id'], _type))
-        sleep(redis_subscribe_delay)
+        sleep(.25)
         res = tuple([c.value.data.get('a')
                     if (c.value and c.value.data)  # required for type checker
                     else None
@@ -678,7 +724,7 @@ def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
         task_helper.add(message, _type)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
         assert(task_helper.exists(message['id'], _type))
-        sleep(redis_subscribe_delay)
+        sleep(.25)
         res = tuple([c.value.data.get('a')
                     if (c.value and c.value.data)  # required for type checker
                     else None
