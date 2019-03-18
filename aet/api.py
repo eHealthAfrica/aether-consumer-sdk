@@ -21,6 +21,8 @@
 import logging
 from functools import wraps
 import json
+from typing import ClassVar, List
+
 
 from flask import Flask, Response, request, jsonify
 from webtest.http import StopableWSGIServer
@@ -30,7 +32,10 @@ from .logger import LOG
 
 class APIServer(object):
 
-    _allowed_types = ['job', 'resource']
+    _allowed_types: ClassVar[List[str]] = [
+        'job',
+        'resource'
+    ]
 
     def __init__(self, consumer, task_manager, settings):
         self.settings = settings

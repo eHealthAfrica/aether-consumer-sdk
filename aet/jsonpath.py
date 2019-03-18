@@ -18,6 +18,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from typing import ClassVar
+
 from jsonpath_ng.ext import parse as jsonpath_ng_ext_parse
 from .logger import LOG
 
@@ -27,7 +29,7 @@ class CachedParser(object):
     # the same for a given path. To reduce the number of times parse() is called, we cache
     # all calls to jsonpath_ng here.
 
-    cache = {}
+    cache: ClassVar[dict] = {}
 
     @staticmethod
     def parse(path):

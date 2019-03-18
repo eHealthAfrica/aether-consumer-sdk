@@ -23,11 +23,11 @@ import enum
 from functools import partialmethod
 from time import sleep
 from threading import Thread
-from typing import Dict, Optional
+from typing import Callable, ClassVar, Dict, Optional
 
 from .logger import LOG
 from .jsonpath import CachedParser
-from .task import Task
+from .task import Task, TaskHelper
 
 
 class JobStatus(enum.Enum):
@@ -39,21 +39,24 @@ class JobStatus(enum.Enum):
 
 
 class BaseJob(object):
+
+    _id: str
+    status: JobStatus = JobStatus.PAUSED
+    config: dict = {}
+    resources: dict = {}
+    value: int = 0
+
     def __init__(self, _id):
         self._id = _id
-        self.status = JobStatus.PAUSED
-        self.config = None
-        self.resources = {}
-        self.value = 0
         self._start()
 
-    def set_config(self, config):
+    def set_config(self, config: dict) -> None:
         LOG.debug(f'Job {self._id} got new config {config}')
         self.config = config
         self.status = JobStatus.RECONFIGURE
 
-    def set_resource(self, resource, _type):
-        self.resouces[_type] = resource
+    def set_resource(self, resource: dict, _type: str) -> None:
+        self.resources[_type] = resource
         self.status = JobStatus.RECONFIGURE
 
     def _run(self):
@@ -108,11 +111,11 @@ class BaseJob(object):
 
 class JobManager(object):
 
-    _job_redis_type = 'job'
-    _job_redis_name = f'_{_job_redis_type}:'
-    _job_redis_path = f'{_job_redis_name}*'
+    _job_redis_type: ClassVar[str] = 'job'
+    _job_redis_name: ClassVar[str] = f'_{_job_redis_type}:'
+    _job_redis_path: ClassVar[str] = f'{_job_redis_name}*'
     # Any type here needs to be registered in the API as APIServer._allowed_types
-    _resources = {
+    _resources: ClassVar[dict] = {
         'resource': {
             'redis_type': 'resource',
             'redis_name': '_resource:',
@@ -121,11 +124,14 @@ class JobManager(object):
         }
     }
 
-    def __init__(self, task_master, job_class=BaseJob):
+    jobs: dict = {}
+    resources: dict = {}
+    task: TaskHelper
+    job_class: Callable
+
+    def __init__(self, task_master: TaskHelper, job_class: Callable = BaseJob):
         self.task = task_master
-        self.job_class = job_class
-        self.jobs = {}
-        self.resources = {}
+        self.job_class = job_class  # type: ignore
         self._init_jobs()
 
     def stop(self, *args, **kwargs):
@@ -277,6 +283,7 @@ class JobManager(object):
         task: Optional[Task] = None,
         job: Optional[Dict] = None
     ) -> str:
+
         # from a signal
         if task:
             _id = task.id.split(type(self)._job_redis_name)[1]
