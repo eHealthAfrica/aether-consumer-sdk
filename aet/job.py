@@ -187,8 +187,8 @@ class JobManager(object):
             self._configure_job_resources(job)
             LOG.debug(f'Resources configured for {_id}')
         except AttributeError as aer:
-            LOG.critical(f'Job {_id} missing required resource, stopping: {aer}')
-            self.jobs[_id].stop()
+            LOG.error(f'Job {_id} missing required resource, stopping: {aer}')
+            self._stop_job(_id)
             return
         self.jobs[_id].set_config(job)
 
@@ -219,7 +219,7 @@ class JobManager(object):
             try:
                 self._init_resource(_type, resource_id, self.jobs[job_id])
             except ValueError as var:
-                LOG.error(f'Resource not found {_type}:{resource_id}, job suspended: {job._id}')
+                LOG.error(f'Resource not found {_type}:{resource_id}, job suspended: {job_id}')
                 raise AttributeError(var)
 
     def _pause_job(self, _id: str) -> None:
@@ -239,6 +239,7 @@ class JobManager(object):
     def _remove_job(self, _id: str) -> None:
         LOG.debug(f'removing job: {_id}')
         self._stop_job(_id)
+        self._remove_resource_listeners(_id)
         del self.jobs[_id]
 
     # Job Listening
@@ -278,6 +279,14 @@ class JobManager(object):
         LOG.debug(f'Job {job._id} subscribing to {_type} : {resource_id}')
         listening_jobs.append(job)
         return True
+
+    def _remove_resource_listeners(self, job_id: str) -> None:
+        # remove all resource listeners for a job with id -> job_id
+        for _type in self.resources.keys():
+            for resource_id in self.resources[_type].keys():
+                jobs = [j for j in self.resources[_type][resource_id] if j._id != job_id]
+                self.resources[_type][resource_id] = jobs
+        return
 
     def _init_resource(
         self,

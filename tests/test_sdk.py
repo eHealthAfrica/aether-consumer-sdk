@@ -494,6 +494,46 @@ def test_consumer__job_registration_failed_missing_resource(consumer: BaseConsum
 
 # real consumer
 @pytest.mark.integration
+def test_consumer__job_registration_hanging_resource_reference(consumer: BaseConsumer):
+    redis_subscribe_delay = 1  # lots of checking on job change
+    _id = '004'
+    res_def = {
+        'id': f'res-{_id}',
+        'value': 1000000
+    }
+    job_def = {
+        'id': _id,
+        'purpose': 'counter',
+        'resources': f'res-{_id}'
+    }
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    consumer.task.add(res_def, type='resource')
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    # job got resource
+    assert(_job.resources['resource']['id'] == res_def['id'])
+    removed = consumer.task.remove(_id, type='job')
+    assert(removed is True)
+    # job is now gone
+    assert(_id not in consumer.job_manager.jobs.keys())
+    res_def = {
+        'id': f'res-{_id}',
+        'value': 1000003
+    }
+    consumer.task.add(res_def, type='resource')
+    # this shouldn't raise an error on the now missing job
+    sleep(redis_subscribe_delay)
+    # re add the job
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    _job = consumer.job_manager.jobs[_id]
+    # resource still correct with new version
+    assert(_job.resources['resource']['id'] == res_def['id'])
+
+# real consumer
+@pytest.mark.integration
 def test_consumer__job_persistence(consumer):
     _id = '001'
     job_def = {'id': _id, 'purpose': 'counter'}
