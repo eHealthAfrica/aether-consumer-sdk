@@ -25,7 +25,7 @@ import mock
 import os
 import pytest
 from time import sleep
-
+from typing import ClassVar, List, Iterable, Optional  # noqa
 
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
@@ -37,7 +37,7 @@ from aet import settings
 from aet.api import APIServer
 from aet.consumer import BaseConsumer
 from aet.kafka import KafkaConsumer
-from aet.task import TaskHelper
+from aet.task import TaskHelper, Task
 
 from .assets.schemas import test_schemas
 from aet.logger import LOG
@@ -52,10 +52,9 @@ topic_size = 500
 
 
 class MockCallable(object):
-    def __init__(self):
-        self.value = None
+    value: Optional[Task] = None
 
-    def set_value(self, msg):
+    def set_value(self, msg: Task):
         LOG.debug(f'MockCallable got msg: {msg}')
         self.value = msg
 
@@ -83,14 +82,14 @@ class MockTaskHelper(object):
 
 class MockConsumer(BaseConsumer):
 
-    PERMISSIVE_SCHEMA = {  # should match anything
+    PERMISSIVE_SCHEMA: ClassVar[dict] = {  # should match anything
         'type': 'object',
         'additionalProperties': True,
         'properties': {
         }
     }
 
-    STRICT_SCHEMA = {  # should match nothing but empty brackets -> {}
+    STRICT_SCHEMA: ClassVar[dict] = {  # should match nothing but empty brackets -> {}
         'type': 'object',
         'additionalProperties': False,
         'properties': {
@@ -351,6 +350,7 @@ def consumer():
     os.environ['EXPOSE_PORT'] = '9014'
     _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
     _consumer.schema = {}  # blank schema
+    sleep(2)
     yield _consumer
     # teardown
     _consumer.stop()
@@ -376,7 +376,7 @@ def mocked_api(mocked_consumer):
 # TaskHelper Assets
 @pytest.mark.integration
 @pytest.fixture(scope="function")
-def task_helper():
+def task_helper() -> Iterable[TaskHelper]:
     helper = TaskHelper(settings.CONSUMER_CONFIG)
     yield helper
     helper.stop()

@@ -21,7 +21,7 @@
 from datetime import datetime
 import json
 import redis
-from typing import NamedTuple, Callable
+from typing import Callable, Dict, NamedTuple, Union
 
 from .logger import LOG
 
@@ -29,7 +29,7 @@ from .logger import LOG
 class Task(NamedTuple):
     id: str
     type: str
-    data: dict = {}
+    data: Union[Dict, None] = None  # None is not set
 
 
 class TaskHelper(object):
@@ -75,7 +75,7 @@ class TaskHelper(object):
             return False
         return True
 
-    def get(self, _id, type):
+    def get(self, _id, type) -> Dict:
         task_id = '_{type}:{_id}'.format(
             type=type,
             _id=_id
@@ -126,20 +126,21 @@ class TaskHelper(object):
             channel = msg['channel']
             # get _id from channel: __keyspace@0__:_test:00001 where _id is "_test:00001"
             _id = ':'.join(channel.split(':')[1:])
-            _type = msg['type']
-            LOG.debug(f'Channel: {channel} received {_type}; registered on: {registered_channel}')
-            if _type in ('set',):
+            redis_op = msg['data']
+            LOG.debug(f'Channel: {channel} received {redis_op};'
+                      + f' registered on: {registered_channel}')
+            if redis_op in ('set',):
                 _redis_msg = self.redis.get(_id)
                 res = Task(
                     id=_id,
-                    type=_type,
+                    type=redis_op,
                     data=json.loads(_redis_msg)
                 )
                 LOG.debug(f'ID: {_id} data: {_redis_msg}')
             else:
                 res = Task(
                     id=_id,
-                    type=_type
+                    type=redis_op
                 )
             fn(res)  # Call registered function with proper data
         return wrapper

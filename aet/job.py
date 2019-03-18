@@ -20,10 +20,10 @@
 
 from copy import deepcopy
 import enum
-from functools import partialmethod
+from functools import partial
 from time import sleep
 from threading import Thread
-from typing import Callable, ClassVar, Dict, Optional
+from typing import Callable, ClassVar, Dict, Any
 
 from .logger import LOG
 from .jsonpath import CachedParser
@@ -55,7 +55,8 @@ class BaseJob(object):
         self.config = config
         self.status = JobStatus.RECONFIGURE
 
-    def set_resource(self, resource: dict, _type: str) -> None:
+    def set_resource(self, _type: str, resource: dict) -> None:
+        LOG.debug(f'Job {self._id} got updated resource:  {resource}')
         self.resources[_type] = resource
         self.status = JobStatus.RECONFIGURE
 
@@ -85,7 +86,7 @@ class BaseJob(object):
             self.status = JobStatus.DEAD
 
     def _handle_new_settings(self):
-        # block and handle changes to self.config or self.resources
+        # blocks and handles changes to self.config or self.resources
         pass
 
     def _copy_settings(self):
@@ -124,8 +125,8 @@ class JobManager(object):
         }
     }
 
-    jobs: dict = {}
-    resources: dict = {}
+    jobs: Dict[str, BaseJob] = {}
+    resources: Dict[str, dict] = {}
     task: TaskHelper
     job_class: Callable
 
@@ -144,53 +145,82 @@ class JobManager(object):
     def _init_jobs(self):
         jobs = self.task.list(type=type(self)._job_redis_type)
         for _id in jobs:
-            job = self.task.get(_id, type=type(self)._job_redis_type)
+            job: Dict = self.task.get(_id, type=type(self)._job_redis_type)
             LOG.debug(f'init job: {job}')
             self._init_job(job)
         self.listen_for_job_change()
+        self.listen_for_resource_change()
 
     # Job Management
 
-    def _init_job(self, job: dict) -> None:
+    def _init_job(
+        self,
+        job: Dict[str, Any]
+    ) -> None:
+        # Attempt to start or update a job
         LOG.debug(f'initalizing job: {job}')
         _id = job['id']
         if _id in self.jobs.keys():
-            LOG.debug('Job {_id} exists, updating')
+            LOG.debug(f'Job {_id} exists, updating')
             self._configure_job(job)
         else:
             self._start_job(job)
 
-    def _start_job(self, job: dict) -> None:
+    def _start_job(
+        self,
+        job: Dict[str, Any]
+    ) -> None:
+        # Start a new job
         LOG.debug(f'starting job: {job}')
         _id = self._get_id(job=job)
         self.jobs[_id] = self.job_class(_id)
         self._configure_job(job)
 
-    def _configure_job(self, job: dict):
+    def _configure_job(
+        self,
+        job: Dict[str, Any]
+    ):
+        # Configure an existing job
         _id = self._get_id(job=job)
         LOG.debug(f'Configuring job {_id}')
         try:
             self._configure_job_resources(job)
+            LOG.debug(f'Resources configured for {_id}')
         except AttributeError as aer:
             LOG.critical(f'Job {_id} missing required resource, stopping: {aer}')
             self.jobs[_id].stop()
             return
         self.jobs[_id].set_config(job)
 
-    def _configure_job_resources(self, job: dict) -> None:
+    def _configure_job_resources(
+        self,
+        job: Dict[str, Any]
+    ) -> None:
+        # Configure resources for a job
         job_id = job['id']
         type_paths = [(k, r['job_path']) for k, r in type(self)._resources.items()]
+        LOG.debug(f'Job: {job_id} triggered checks on paths {type_paths}')
+        added_resources = []
         for _type, path in type_paths:
             matches = CachedParser.find(path, job)
             if not matches:
-                return  # no dependant resource of this type
+                LOG.debug(f'Job: {job_id} has no external resources for path {path}')
+                continue  # no dependant resource of this type
             resource_id = [m.value for m in matches][0]
             LOG.debug(f'Job : {job_id} depends on resource {_type}:{resource_id}')
-            self._register_resource_listener(
+            added = self._register_resource_listener(
                 _type,
                 resource_id,
                 self.jobs[job_id]
             )
+            if added:
+                added_resources.append([_type, resource_id])
+        for _type, resource_id in added_resources:
+            try:
+                self._init_resource(_type, resource_id, self.jobs[job_id])
+            except ValueError as var:
+                LOG.error(f'Resource not found {_type}:{resource_id}, job suspended: {job._id}')
+                raise AttributeError(var)
 
     def _pause_job(self, _id: str) -> None:
         LOG.debug(f'pausing job: {_id}')
@@ -223,7 +253,7 @@ class JobManager(object):
             redis_path = rule['redis_path']
             LOG.debug(f'Listening for resource {_type} on {redis_path}')
             # use a partial to keep from having to inspect the message source later
-            callback = partialmethod(self.on_resource_change, _type)
+            callback = partial(self.on_resource_change, _type)
             self.task.subscribe(callback, redis_path)
 
     def _register_resource_listener(
@@ -231,21 +261,34 @@ class JobManager(object):
         _type: str,
         resource_id: str,
         job: BaseJob
-    ) -> None:
+    ) -> bool:
 
         # register callbacks for job resource listeners
         # make sure structures exist for this _type & resource_id
-        self.resources[_type] = self.resources.get(_type, {})
-        self.resources[_type][resource_id] = self.resources[_type].get(resource_id, [])
+        if not self.resources.get(_type):
+            self.resources[_type] = {}
+        if not self.resources[_type].get(resource_id):
+            self.resources[_type][resource_id] = []
         # see if this job is already listening to this resource to avoid duplicates
         listening_jobs = self.resources[_type][resource_id]
-        if job._id not in [j._id for j in listening_jobs]:
+        if job._id in [j._id for j in listening_jobs]:
             LOG.debug(f'Job {job._id} already subscribed to {_type} : {resource_id}')
-            return
+            return False
         # add job reference to listening jobs
+        LOG.debug(f'Job {job._id} subscribing to {_type} : {resource_id}')
         listening_jobs.append(job)
-        # TODO KILL kill reference check
-        assert(job._id in [j._id for j in self.resources[_type][resource_id]])
+        return True
+
+    def _init_resource(
+        self,
+        _type: str,
+        resource_id: str,
+        job: BaseJob
+    ) -> None:
+        LOG.debug(f'Initializing resource for job {job._id} -> {_type}:{resource_id}')
+        res = self.task.get(_id=resource_id, type=_type)
+        job.set_resource(_type, res)
+        return
 
     def on_resource_change(
         self,
@@ -255,13 +298,18 @@ class JobManager(object):
 
         # find out which jobs this pertains to
         LOG.debug(f'Consumer resource update : "{_type}": {msg}')
-        resource_id = msg.id.split(self.resources[_type]['redis_name'])[1]
+        resource_id = msg.id.split(
+            type(self)._resources[_type]['redis_name'])[1]
         # find jobs this pertains to
-        jobs = self.resources[_type][resource_id]
+        jobs = self.resources.get(_type, {}).get(resource_id, {})
+        if not jobs:
+            LOG.debug(f'No matching jobs for resource {_type}:{resource_id} registered. Ignoring')
+            return
+        job: BaseJob
         for job in jobs:
             if msg.type == 'set':
                 LOG.debug(f'Sending update to subscriber {job._id}')
-                job.set_resource(msg.data)
+                job.set_resource(_type, msg.data)  # type: ignore  # overly pedantic with dicts
             elif msg.type == 'del':
                 LOG.debug(f'Job: {job._id} has unmet resource dependency'
                           f' {_type}:{msg.id}. Stopping.')
@@ -271,7 +319,8 @@ class JobManager(object):
         LOG.debug(f'Consumer received cmd: "{msg.type}" on job: {msg.id}')
         if msg.type == 'set':
             job = msg.data
-            self._init_job(job)
+            if job:  # type checker gets mad without the check here
+                self._init_job(job)
         elif msg.type == 'del':
             _id = self._get_id(msg)  # just the id
             self._remove_job(_id)
@@ -280,8 +329,8 @@ class JobManager(object):
 
     def _get_id(
         self,
-        task: Optional[Task] = None,
-        job: Optional[Dict] = None
+        task: Task = None,
+        job: dict = None
     ) -> str:
 
         # from a signal

@@ -21,7 +21,7 @@
 import requests
 
 from . import *  # noqa
-from aet.job import BaseJob
+from aet.job import BaseJob, JobStatus
 
 # from aet.kafka import KafkaConsumer
 
@@ -393,7 +393,7 @@ def test_api_post_calls(call, result, body, mocked_api):
 #
 #####
 
-redis_subscribe_delay = 0.05  # Almost realtime...
+redis_subscribe_delay = 0.05
 
 
 # real consumer
@@ -412,13 +412,15 @@ def test_consumer__startup_shutdown(consumer):
 
 # real consumer
 @pytest.mark.integration
-def test_consumer__job_registration(consumer):
+def test_consumer__job_registration(consumer: BaseConsumer):
     _id = '001'
     job_def = {'id': _id, 'purpose': 'counter'}
     consumer.task.add(job_def, type='job')
+    redis_subscribe_delay = 1  # lots of checking on job change
     sleep(redis_subscribe_delay)
     assert(_id in consumer.job_manager.jobs.keys())
-    _job = consumer.job_manager.jobs[_id]
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    assert('purpose' in _job.config.keys()), f'missing: {_job.config}'
     assert(_job.config['purpose'] == 'counter')
     assert(isinstance(_job, BaseJob))
     old_val = _job.value
@@ -434,6 +436,61 @@ def test_consumer__job_registration(consumer):
     sleep(redis_subscribe_delay)
     assert(_id not in consumer.job_manager.jobs.keys())
 
+
+# real consumer
+@pytest.mark.integration
+def test_consumer__job_registration_with_resource(consumer: BaseConsumer):
+    redis_subscribe_delay = 1  # lots of checking on job change
+    res_def = {
+        'id': 'res-001',
+        'value': 1000000
+    }
+    _id = '002'
+    job_def = {
+        'id': _id,
+        'purpose': 'counter',
+        'resources': 'res-001'
+    }
+    consumer.task.add(res_def, type='resource')
+    sleep(redis_subscribe_delay)
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    assert('purpose' in _job.config.keys()), f'missing: {_job.config}'
+    assert(_job.config['purpose'] == 'counter')
+    assert(_job.resources['resource'].get('value') == res_def['value'])
+    res_def['value'] = 1000002
+    consumer.task.add(res_def, type='resource')
+    sleep(redis_subscribe_delay)
+    # check that the value was updated
+    assert(_job.resources['resource'].get('value') == res_def['value'])
+    removed = consumer.task.remove(res_def['id'], type='resource')
+    assert(removed is True)
+    sleep(redis_subscribe_delay)
+    # job stopped because of unmet depedency
+    assert(_job.status is JobStatus.STOPPED)
+    removed = consumer.task.remove(_id, type='job')
+    assert(removed is True)
+
+# real consumer
+@pytest.mark.integration
+def test_consumer__job_registration_failed_missing_resource(consumer: BaseConsumer):
+    redis_subscribe_delay = 1  # lots of checking on job change
+    _id = '003'
+    job_def = {
+        'id': _id,
+        'purpose': 'counter',
+        'resources': 'res-002'
+    }
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    # job stopped because of unmet depedency
+    assert(_job.status is JobStatus.STOPPED)
+    removed = consumer.task.remove(_id, type='job')
+    assert(removed is True)
 
 # real consumer
 @pytest.mark.integration
@@ -488,7 +545,7 @@ def test_redis_io(name, args, expected, task_helper):
 
 
 @pytest.mark.integration
-def test_redis_get_methods(task_helper):
+def test_redis_get_methods(task_helper: TaskHelper):
     tasks = redis_messages
     _type = 'test'
     for t in tasks:
@@ -519,20 +576,20 @@ def test_redis_subscibe__succeed(task_helper, message, sub):
     # TaskID in redis is : _{type}:{_id}
     _type = 'test'
     LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
-    callable = MockCallable()
+    callable: MockCallable = MockCallable()
     task_helper.subscribe(callable.set_value, **sub)
     task_helper.add(message, _type)
     assert(task_helper.exists(message['id'], _type))
     sleep(redis_subscribe_delay)
     # listen for set and check value
-    assert(message['a'] == callable.value['data']['a'])
+    assert(message['a'] == callable.value.data['a'])
     # delete the message
     task_helper.remove(message['id'], _type)
     assert(task_helper.exists(message['id'], _type) is False)
     sleep(redis_subscribe_delay)
     # get delete message
     LOG.debug(callable.value)
-    assert(callable.value['data'] is None and callable.value['type'] == 'del')
+    assert(callable.value.data is None and callable.value.type == 'del')
 
 
 @pytest.mark.integration
@@ -542,7 +599,7 @@ def test_redis_subscibe__succeed(task_helper, message, sub):
 def test_redis_subscibe__fail(task_helper, message, sub):
     _type = 'test'
     LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
-    callable = MockCallable()
+    callable: MockCallable = MockCallable()
     task_helper.subscribe(callable.set_value, **sub)
     task_helper.add(message, _type)
     assert(task_helper.exists(message['id'], _type))
@@ -551,13 +608,13 @@ def test_redis_subscibe__fail(task_helper, message, sub):
 
 
 @pytest.mark.integration
-def test_redis_subscibe_multiple__succeed(task_helper):
+def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
     suite = [
         (redis_messages[2], {'pattern': '_test:000*2'}, (3, None, 3), (3, 2, 3)),
         (redis_messages[1], {'pattern': '_test:00002'}, (2, 2, 2), (2, 2, 2)),
         (redis_messages[0], {'pattern': '_test:*'}, (2, 2, 1), (2, 2, 1)),
     ]
-    callables = [MockCallable() for i in range(len(suite))]
+    callables: List[MockCallable] = [MockCallable() for i in range(len(suite))]
     _type = 'test'
     for x, (message, sub, fwd, rev) in enumerate(suite):
         task_helper.subscribe(callables[x].set_value, **sub)
@@ -567,8 +624,11 @@ def test_redis_subscibe_multiple__succeed(task_helper):
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
         assert(task_helper.exists(message['id'], _type))
         sleep(redis_subscribe_delay)
-        res = tuple([c.value.get('data').get('a') if c.value else None for c in callables])
-        LOG.debug(json.dumps([c.value['data'] if c.value else None for c in callables], indent=2))
+        res = tuple([c.value.data.get('a')
+                    if (c.value and c.value.data)  # required for type checker
+                    else None
+                    for c in callables])
+        LOG.debug(json.dumps([c.value.data if c.value else None for c in callables], indent=2))
         assert(res == fwd)
 
     for (message, sub, fwd, rev) in suite[::-1]:
@@ -576,6 +636,9 @@ def test_redis_subscibe_multiple__succeed(task_helper):
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
         assert(task_helper.exists(message['id'], _type))
         sleep(redis_subscribe_delay)
-        res = tuple([c.value.get('data').get('a') if c.value else None for c in callables])
-        LOG.debug(json.dumps([c.value['data'] if c.value else None for c in callables], indent=2))
+        res = tuple([c.value.data.get('a')
+                    if (c.value and c.value.data)  # required for type checker
+                    else None
+                    for c in callables])
+        LOG.debug(json.dumps([c.value.data if c.value else None for c in callables], indent=2))
         assert(res == rev)

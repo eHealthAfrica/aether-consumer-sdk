@@ -31,6 +31,9 @@ EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
 class BaseConsumer(object):
 
+    task: TaskHelper
+    job_manager: JobManager
+
     def __init__(self, CON_CONF, KAFKA_CONF):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
@@ -77,6 +80,6 @@ class BaseConsumer(object):
 
 
 if __name__ == '__main__':
-    from .settings import CONSUMER_SETTINGS, KAFKA_SETTINGS
-    consumer = BaseConsumer(CONSUMER_SETTINGS, KAFKA_SETTINGS)
+    from .settings import CONSUMER_CONFIG, KAFKA_CONFIG
+    consumer = BaseConsumer(CONSUMER_CONFIG, KAFKA_CONFIG)
     consumer.serve_api(consumer.consumer_settings)
