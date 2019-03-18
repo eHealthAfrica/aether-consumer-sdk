@@ -515,6 +515,7 @@ def test_consumer__job_registration_hanging_resource_reference(consumer: BaseCon
     # job got resource
     assert(_job.resources['resource']['id'] == res_def['id'])
     removed = consumer.task.remove(_id, type='job')
+    sleep(redis_subscribe_delay)
     assert(removed is True)
     # job is now gone
     assert(_id not in consumer.job_manager.jobs.keys())
@@ -531,6 +532,8 @@ def test_consumer__job_registration_hanging_resource_reference(consumer: BaseCon
     _job = consumer.job_manager.jobs[_id]
     # resource still correct with new version
     assert(_job.resources['resource']['id'] == res_def['id'])
+    removed = consumer.task.remove(_id, type='job')
+    removed = consumer.task.remove(res_def['id'], type='resource')
 
 # real consumer
 @pytest.mark.integration
