@@ -272,7 +272,11 @@ class JobManager(object):
 
     # utility
 
-    def _get_id(self, task: Optional[Task] = None, job: Optional[Dict] = None):
+    def _get_id(
+        self,
+        task: Optional[Task] = None,
+        job: Optional[Dict] = None
+    ) -> str:
         # from a signal
         if task:
             _id = task.id.split(type(self)._job_redis_name)[1]
