@@ -21,14 +21,14 @@
 import logging
 from functools import wraps
 import json
-from typing import ClassVar, Dict, List, TYPE_CHECKING
+from typing import ClassVar, Dict, List, TYPE_CHECKING, Union
 
 from flask import Flask, Request, Response, request, jsonify
 from webtest.http import StopableWSGIServer
 
 from .logger import LOG
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from .consumer import BaseConsumer
     from .task import TaskHelper
     from .settings import Settings
@@ -257,8 +257,7 @@ class APIServer(object):
     @restrict_types('LIST')
     @requires_auth
     def _list(self, _type=None, operation=None):
-        with self.app.app_context():
-            return jsonify(dict(self.consumer.list(_type=_type)))
+        return self.handle_crud(request, operation, _type)
 
     # Validation of asset of _type
 
@@ -278,6 +277,7 @@ class APIServer(object):
     def handle_crud(self, request: Request, operation: str, _type: str):
         self.app.logger.debug(request)
         _id = request.args.get('id', None)
+        response: Union[str, List, Dict, bool]
         if operation == 'CREATE':
             if self.consumer.validate(request.get_json(), _type=_type):
                 response = self.task.add(request.get_json(), type=_type)
@@ -291,5 +291,7 @@ class APIServer(object):
             if not _id:
                 return Response('Argument "id" is required', 400)
             response = json.loads(str(self.task.get(_id, type=_type)))
+        if operation == 'LIST':
+            response = list(self.task.list(type=_type))
         with self.app.app_context():
             return jsonify(response)

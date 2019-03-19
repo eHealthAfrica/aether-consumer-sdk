@@ -20,6 +20,6 @@
 
 try:
     __import__('pkg_resources').declare_namespace(__name__)
-except ImportError:
+except ImportError:  # pragma: no cover
     # mypy issue #1422
-    __path__ = __import__('pkgutil').extend_path(__path__, __name__)  # type: ignore
+    __path__ = __import__('pkgutil').extend_path(__path__, __name__)  # type: ignore  # noqa

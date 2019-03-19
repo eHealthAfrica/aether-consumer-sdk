@@ -36,6 +36,7 @@ from spavro.schema import parse as ParseSchema
 from aet import settings
 from aet.api import APIServer
 from aet.consumer import BaseConsumer
+from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.task import TaskHelper, Task
 

@@ -49,6 +49,8 @@ class BaseJob(object):
     sleep_delay: float = 0.01
     # debug reporting interval
     report_interval: int = 10
+    # join timeout for the worker thread
+    shutdown_grace_period: int = 5
 
     def __init__(self, _id):
         self._id = _id
@@ -134,6 +136,7 @@ class BaseJob(object):
 
     def stop(self, *args, **kwargs):
         self.status = JobStatus.STOPPED
+        self._thread.join(self.shutdown_grace_period)
 
 
 class JobManager(object):
@@ -253,8 +256,6 @@ class JobManager(object):
         LOG.debug(f'stopping job: {_id}')
         if _id in self.jobs:
             self.jobs[_id].stop()
-        else:
-            LOG.debug(f'Could not find job {_id} to stop.')
 
     def _remove_job(self, _id: str) -> None:
         LOG.debug(f'removing job: {_id}')

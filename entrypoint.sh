@@ -47,14 +47,14 @@ test_flake8() {
 test_integration() {
     echo 'Running Integration Tests...'
     export PYTHONDONTWRITEBYTECODE=1 
-    pytest -m integration -p no:cacheprovider  # disable __pycache__ which pollutes local FS
+    pytest --cov-report term-missing --cov=aet tests/ -m integration -p no:cacheprovider  # disable __pycache__ which pollutes local FS
     cat /code/conf/extras/good_job.txt
 }
 
 test_unit() {
     echo 'Running Unit Tests...'
     export PYTHONDONTWRITEBYTECODE=1 
-    pytest -m unit -p no:cacheprovider  # disable __pycache__ which pollutes local FS
+    pytest --cov-report term-missing --cov=aet tests/ -m unit -p no:cacheprovider  # disable __pycache__ which pollutes local FS
     cat /code/conf/extras/good_job.txt
 }
 
@@ -96,6 +96,7 @@ case "$1" in
     test_unit)
         test_flake8
         test_unit
+
     ;;
 
     test_integration)

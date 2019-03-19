@@ -96,9 +96,3 @@ class BaseConsumer(object):
         except jsonschema.exceptions.ValidationError as err:
             LOG.debug(err)
             return False
-
-    def list(self, _type=None):
-        status = {}
-        for _id in self.task.list(type=_type):
-            status[_id] = self.job_manager.get_status(_type, _id)
-        return status
