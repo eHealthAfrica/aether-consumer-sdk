@@ -353,7 +353,7 @@ def consumer() -> Iterable[BaseConsumer]:
     os.environ['CONSUMER_NAME'] = 'BaseConsumer'
     os.environ['EXPOSE_PORT'] = '9014'
     _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
-    _consumer.schema = {}  # blank schema
+    _consumer.schemas = {'resource': {}, 'job': {}}  # blank schemas
     sleep(1)
     yield _consumer
     # teardown

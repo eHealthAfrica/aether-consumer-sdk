@@ -45,6 +45,10 @@ class BaseJob(object):
     config: dict = {}
     resources: dict = {}
     value: int = 0
+    # loop pause delay
+    sleep_delay: float = 0.01
+    # debug reporting interval
+    report_interval: int = 10
 
     def __init__(self, _id):
         self._id = _id
@@ -71,10 +75,10 @@ class BaseJob(object):
             c = 0
             while self.status is not JobStatus.STOPPED:
                 c += 1
-                if c % 10000 == 0:
+                if c % self.report_interval == 0:
                     LOG.debug(f'thread {self._id} running : {self.status}')
                 if self.status is JobStatus.PAUSED:
-                    sleep(0.01)  # wait for the status to change
+                    sleep(self.sleep_delay)  # wait for the status to change
                     continue
                 if self.status is JobStatus.RECONFIGURE:
                     # Take the new configuration into account if anything needs to happen
@@ -109,7 +113,13 @@ class BaseJob(object):
     def _handle_messages(self, config, resources):
         # probably needs custom implementation for each consumer
         # Do something based on the messages
+        sleep(self.sleep_delay)
         self.value += 1
+
+    def _cause_exception(self) -> None:
+        # intentionally cause the thread to crash for testing purposes
+        # should yield status.DEAD and throw a critical message for TypeError
+        self.value = None  # type: ignore
 
     def _start(self):
         LOG.debug(f'Job {self._id} starting')
@@ -197,7 +207,10 @@ class JobManager(object):
         try:
             self._configure_job_resources(job)
             LOG.debug(f'Resources configured for {_id}')
-        except AttributeError as aer:
+        except (
+            AttributeError,
+            ValueError
+        ) as aer:
             LOG.error(f'Job {_id} missing required resource, stopping: {aer}')
             self._stop_job(_id)
             return
@@ -227,11 +240,7 @@ class JobManager(object):
             if added:
                 added_resources.append([_type, resource_id])
         for _type, resource_id in added_resources:
-            try:
-                self._init_resource(_type, resource_id, self.jobs[job_id])
-            except ValueError as var:
-                LOG.error(f'Resource not found {_type}:{resource_id}, job suspended: {job_id}')
-                raise AttributeError(var)
+            self._init_resource(_type, resource_id, self.jobs[job_id])
 
     def _pause_job(self, _id: str) -> None:
         LOG.debug(f'pausing job: {_id}')

@@ -415,10 +415,14 @@ def test_consumer__job_registration(consumer: BaseConsumer):
     job_def = {'id': _id, 'purpose': 'counter'}
     res = consumer.task.add(job_def, type='job')
     assert(isinstance(res, bool))
-    redis_subscribe_delay = 1  # lots of checking on job change
     sleep(redis_subscribe_delay)
     assert(_id in consumer.job_manager.jobs.keys())
     _job: BaseJob = consumer.job_manager.jobs[_id]
+    _job.status = JobStatus.PAUSED
+    sleep(redis_subscribe_delay)
+    # check that it stays paused
+    assert(_job.status is JobStatus.PAUSED)
+    _job.status = JobStatus.NORMAL
     assert('purpose' in _job.config.keys()), f'missing: {_job.config}'
     assert(_job.config['purpose'] == 'counter')
     assert(isinstance(_job, BaseJob))
@@ -430,6 +434,9 @@ def test_consumer__job_registration(consumer: BaseConsumer):
     consumer.task.add(job_def, type='job')
     sleep(redis_subscribe_delay)
     assert(_job.config['purpose'] == new_purpose)
+    _job._cause_exception()
+    sleep(redis_subscribe_delay)
+    assert(_job.status is JobStatus.DEAD)
     removed = consumer.task.remove(_id, type='job')
     assert(removed is True)
     sleep(redis_subscribe_delay)
@@ -464,7 +471,7 @@ def test_consumer__job_registration_with_resource(consumer: BaseConsumer):
     sleep(redis_subscribe_delay)
     # check that the value was updated
     assert(_job.resources['resource'].get('value') == res_def['value'])
-    removed = consumer.task.remove(res_def['id'], type='resource')
+    removed = consumer.task.remove(str(res_def['id']), type='resource')  # explicit cast to string
     assert(removed is True)
     sleep(redis_subscribe_delay)
     # job stopped because of unmet depedency
@@ -537,7 +544,7 @@ def test_consumer__job_registration_hanging_resource_reference(consumer: BaseCon
     # resource still correct with new version in resurrected job
     assert(_job.resources['resource']['id'] == res_def['id'])
     removed = consumer.task.remove(_id, type='job')
-    removed = consumer.task.remove(res_def['id'], type='resource')
+    removed = consumer.task.remove(str(res_def['id']), type='resource')
 
 # real consumer
 @pytest.mark.integration
@@ -573,7 +580,7 @@ def test_consumer__job_multicast_receive_resource(consumer: BaseConsumer):
     assert(job1.status is JobStatus.NORMAL)
     assert(job2.status is JobStatus.NORMAL)
     # resource still correct with new version in resurrected job
-    removed = consumer.task.remove(res_def['id'], type='resource')
+    removed = consumer.task.remove(str(res_def['id']), type='resource')
     sleep(redis_subscribe_delay)
     assert(job1.status is JobStatus.STOPPED)
     assert(job2.status is JobStatus.STOPPED)
@@ -642,9 +649,9 @@ def test_redis_get_methods(task_helper: TaskHelper):
     _type = 'test'
     for t in tasks:
         assert(task_helper.add(t, _type) is True)
-        assert(task_helper.exists(t['id'], _type) is True)
+        assert(task_helper.exists(str(t['id']), _type) is True)
     for t in tasks:
-        _id = t['id']
+        _id = str(t['id'])
         from_redis = task_helper.get(_id, _type)
         assert(from_redis.get('id') == _id)
     try:
@@ -716,7 +723,7 @@ def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
     for (message, sub, fwd, rev) in suite:
         task_helper.add(message, _type)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
-        assert(task_helper.exists(message['id'], _type))
+        assert(task_helper.exists(str(message['id']), _type))
         sleep(.25)
         res = tuple([c.value.data.get('a')
                     if (c.value and c.value.data)  # required for type checker
@@ -728,7 +735,7 @@ def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
     for (message, sub, fwd, rev) in suite[::-1]:
         task_helper.add(message, _type)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
-        assert(task_helper.exists(message['id'], _type))
+        assert(task_helper.exists(str(message['id']), _type))
         sleep(.25)
         res = tuple([c.value.data.get('a')
                     if (c.value and c.value.data)  # required for type checker

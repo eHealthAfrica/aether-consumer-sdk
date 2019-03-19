@@ -21,6 +21,7 @@
 import json
 import jsonschema
 from time import sleep
+from typing import Any, Dict
 
 from .api import APIServer
 from .logger import LOG
@@ -33,8 +34,9 @@ EXCLUDED_TOPICS = ['__confluent.support.metrics']
 class BaseConsumer(object):
 
     api: APIServer
-    task: TaskHelper
     job_manager: JobManager
+    schemas: Dict[str, Any] = {}
+    task: TaskHelper
 
     def __init__(self, CON_CONF, KAFKA_CONF):
         self.consumer_settings = CON_CONF

@@ -21,13 +21,17 @@
 import logging
 from functools import wraps
 import json
-from typing import ClassVar, List
-
+from typing import ClassVar, List, TYPE_CHECKING
 
 from flask import Flask, Response, request, jsonify
 from webtest.http import StopableWSGIServer
 
 from .logger import LOG
+
+if TYPE_CHECKING:
+    from .consumer import BaseConsumer
+    from .task import TaskHelper
+    from .settings import Settings
 
 
 class APIServer(object):
@@ -37,7 +41,16 @@ class APIServer(object):
         'resource'
     ]
 
-    def __init__(self, consumer, task_manager, settings):
+    # type definition of the arguments here causes circular imports,
+    # so we do it in the init method instead.
+
+    def __init__(
+        self,
+        consumer: 'BaseConsumer',
+        task_manager: 'TaskHelper',
+        settings: 'Settings'
+    ) -> None:
+
         self.settings = settings
         self.consumer = consumer
         self.task = task_manager
