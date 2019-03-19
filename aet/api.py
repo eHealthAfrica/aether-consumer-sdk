@@ -21,9 +21,9 @@
 import logging
 from functools import wraps
 import json
-from typing import ClassVar, List, TYPE_CHECKING
+from typing import ClassVar, Dict, List, TYPE_CHECKING
 
-from flask import Flask, Response, request, jsonify
+from flask import Flask, Request, Response, request, jsonify
 from webtest.http import StopableWSGIServer
 
 from .logger import LOG
@@ -36,15 +36,20 @@ if TYPE_CHECKING:
 
 class APIServer(object):
 
-    _allowed_types: ClassVar[List[str]] = [
-        'job',
-        'resource'
-    ]
-
-    # type definition of the arguments here causes circular imports,
-    # so we do it in the init method instead.
+    # consumed by the restrict_types decorator
+    _allowed_types: ClassVar[Dict[str, List]] = {
+        'job': [
+            'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE',
+            'PAUSE', 'RESUME', 'STATUS'  # Only valid for jobs
+        ],
+        'resource': [
+            'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE'
+        ]
+    }
 
     def __init__(
+        # type declaration of the arguments in the usual way causes
+        # circular imports, so we do it in the init method instead.
         self,
         consumer: 'BaseConsumer',
         task_manager: 'TaskHelper',
@@ -93,59 +98,101 @@ class APIServer(object):
         self.app.logger.info('Stopping API')
         self.http.shutdown()
 
+    #######
+    #
     # Flask Functions
+    #
+    #######
 
     # Restrict types that can be input into API
+    #   Also restricts which methods are allowed in a type
     #   Set in Class._allowed_types
 
-    def restrict_types(f):
-        @wraps(f)
-        def decorated(self, *args, **kwargs):
-            _type = kwargs.get('_type')
-            if _type not in type(self)._allowed_types:
-                return Response('Not Found', 404)
-            return f(self, *args, **kwargs)
-        return decorated
+    def restrict_types(operation):  # TODO # Can't get this typed properly
+        def decorator(f):
+            @wraps(f)
+            def decorated(self, *args, **kwargs):
+                _type = kwargs.get('_type')
+                kwargs['operation'] = operation
+                type_definitions = type(self)._allowed_types
+                if _type not in type_definitions:
+                    return Response('Not Found', 404)
+                elif operation not in type_definitions[_type]:
+                    return Response(f'{operation} not valid for {_type}', 405)
+                return f(self, *args, **kwargs)
+            return decorated
+        return decorator
 
-    def add_endpoints(self):
+    def add_endpoints(self) -> None:
         # URLS configured here
         # Add endpoints for all registered types
         self.register(
             '<string:_type>/add',
             self.add,
             methods=['POST'])
+
         self.register(
             '<string:_type>/delete',
-            self.remove)
+            self.remove,
+            methods=['GET', 'POST'])
+
         self.register(
             '<string:_type>/update',
             self.add,
             methods=['POST'])
+
         self.register(
             '<string:_type>/validate',
             self.validate,
             methods=['POST'])
+
         self.register(
             '<string:_type>/get',
-            self.get)
+            self.get,
+            methods=['GET', 'POST'])
+
         self.register(
             '<string:_type>/list',
             self._list)
+
+        self.register(
+            '<string:_type>/pause',
+            self.pause,
+            methods=['GET', 'POST'])
+
+        self.register(
+            '<string:_type>/resume',
+            self.resume,
+            methods=['GET', 'POST'])
+
+        self.register(
+            '<string:_type>/status',
+            self.status,
+            methods=['GET', 'POST'])
+
         self.register('healthcheck', self.request_healthcheck)
 
-    def register(self, route_name, fn, **options):
+    def register(self, route_name, fn, **options) -> None:
+        # this MUST be done at runtime. Can't set the routes via decorator
         self.app.add_url_rule('/%s' % route_name, route_name, view_func=fn, **options)
+
+    #######
+    #
+    # Auth / Control
+    #
+    #######
 
     # Basic Auth implementation
 
-    def check_auth(self, username, password):
+    def check_auth(self, username, password) -> bool:
         return username == self.admin_name and password == self.admin_password
 
-    def request_authentication(self):
+    def request_authentication(self) -> Response:
         return Response('Bad Credentials', 401,
                         {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
-    def requires_auth(f):
+    # auth enabled on routes via decorator inclusion
+    def requires_auth(f):  # TODO # Can't get this typed properly
         @wraps(f)
         def decorated(self, *args, **kwargs):
             LOG.error([args, kwargs])
@@ -155,41 +202,80 @@ class APIServer(object):
             return f(self, *args, **kwargs)
         return decorated
 
+    #######
+    #
     # Exposed endpoints
+    #
+    #######
 
-    def request_healthcheck(self):
+    def request_healthcheck(self) -> Response:
         with self.app.app_context():
             return Response({"healthy": True})
 
-    @restrict_types
-    @requires_auth
-    def add(self, _type):
-        return self.handle_crud(request, 'CREATE', _type)
+    # Job only (or needs custom implementation in consumer based on type)
 
-    @restrict_types
+    @restrict_types('STATUS')
     @requires_auth
-    def remove(self, _type):
-        return self.handle_crud(request, 'DELETE', _type)
+    def status(self, _type=None, operation=None):
+        _id = request.args.get('id', None)
+        with self.app.app_context():
+            return jsonify(self.consumer.status(_id))
 
-    @restrict_types
+    @restrict_types('PAUSE')
     @requires_auth
-    def get(self, _type):
-        return self.handle_crud(request, 'READ', _type)
+    def pause(self, _type=None, operation=None):
+        _id = request.args.get('id', None)
+        with self.app.app_context():
+            return jsonify(self.consumer.pause(_id))
 
-    @restrict_types
+    @restrict_types('RESUME')
     @requires_auth
-    def _list(self, _type):
+    def resume(self, _type=None, operation=None):
+        _id = request.args.get('id', None)
+        with self.app.app_context():
+            return jsonify(self.consumer.resume(_id))
+
+    # Generic CRUD
+
+    @restrict_types('CREATE')
+    @requires_auth
+    def add(self, _type=None, operation=None):
+        return self.handle_crud(request, operation, _type)
+
+    @restrict_types('DELETE')
+    @requires_auth
+    def remove(self, _type=None, operation=None):
+        return self.handle_crud(request, operation, _type)
+
+    @restrict_types('READ')
+    @requires_auth
+    def get(self, _type=None, operation=None):
+        return self.handle_crud(request, operation, _type)
+
+    # List of Assets of _type
+
+    @restrict_types('LIST')
+    @requires_auth
+    def _list(self, _type=None, operation=None):
         with self.app.app_context():
             return jsonify(dict(self.consumer.list(_type=_type)))
 
-    @restrict_types
+    # Validation of asset of _type
+
+    @restrict_types('VALIDATE')
     @requires_auth
-    def validate(self, _type):
+    def validate(self, _type=None, operation=None):
         res = self.consumer.validate(request.get_json(), _type)
         with self.app.app_context():
             return jsonify({'valid': res})
 
-    def handle_crud(self, request, operation, _type):
+    #######
+    #
+    # CRUD Handling
+    #
+    #######
+
+    def handle_crud(self, request: Request, operation: str, _type: str):
         self.app.logger.debug(request)
         _id = request.args.get('id', None)
         if operation == 'CREATE':
@@ -198,8 +284,12 @@ class APIServer(object):
             else:
                 response = False
         if operation == 'DELETE':
+            if not _id:
+                return Response('Argument "id" is required', 400)
             response = self.task.remove(_id, type=_type)
         if operation == 'READ':
-            response = json.loads(self.task.get(_id, type=_type))
+            if not _id:
+                return Response('Argument "id" is required', 400)
+            response = json.loads(str(self.task.get(_id, type=_type)))
         with self.app.app_context():
             return jsonify(response)

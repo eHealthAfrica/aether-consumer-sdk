@@ -21,12 +21,13 @@
 import json
 import jsonschema
 from time import sleep
-from typing import Any, Dict
+from typing import Any, Dict, List, Union
 
 from .api import APIServer
 from .logger import LOG
 from .task import TaskHelper
 from .job import JobManager, BaseJob
+from .settings import Settings
 
 EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
@@ -34,6 +35,8 @@ EXCLUDED_TOPICS = ['__confluent.support.metrics']
 class BaseConsumer(object):
 
     api: APIServer
+    consumer_settings: Settings
+    kafka_settings: Settings
     job_manager: JobManager
     schemas: Dict[str, Any] = {}
     task: TaskHelper
@@ -70,6 +73,20 @@ class BaseConsumer(object):
             return json.load(f)
 
     # Job API Functions that aren't pure delegation to Redis
+
+    def pause(self, _id: str) -> bool:
+        return self.job_manager.pause_job(_id)
+
+    def resume(self, _id) -> bool:
+        return self.job_manager.resume_job(_id)
+
+    def status(self, _id: Union[str, List[str]]) -> List:
+        if isinstance(_id, str):
+            return [self.job_manager.get_job_status(_id)]
+        else:
+            return [self.job_manager.get_job_status(j_id) for j_id in _id]
+
+    # Generic API Functions that aren't pure delegation to Redis
 
     def validate(self, job, _type=None, schema=None):
         schema = schema if schema else self.schemas.get(_type, {})

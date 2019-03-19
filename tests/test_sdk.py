@@ -322,23 +322,32 @@ from aet.job import BaseJob, JobStatus
 #####
 
 @pytest.mark.unit
-@pytest.mark.parametrize("call,result", [
-                        ('job/delete', True),
-                        ('job/get', {}),
-                        ('job/list', {}),
-                        ('resource/delete', True),
-                        ('resource/get', {}),
-                        ('resource/list', {}),
-                        ('healthcheck', 'healthy')
+@pytest.mark.parametrize("call,result,raises_error", [
+                        ('job/delete?id=fake', True, False),
+                        ('job/delete', None, True),
+                        ('job/get?id=fake', {}, False),
+                        ('job/get', None, True),
+                        ('job/list', {}, False),
+                        ('resource/delete?id=fake', True, False),
+                        ('resource/delete', None, True),
+                        ('resource/get', None, True),
+                        ('resource/get?id=fake', {}, True),
+                        ('resource/list', {}, False),
+                        ('bad_resource/list', {}, True),
+                        ('healthcheck', 'healthy', False)
 ])
-def test_api_get_calls(call, result, mocked_api):
+def test_api_get_calls(call, result, raises_error, mocked_api):
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
     pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
     auth = requests.auth.HTTPBasicAuth(user, pw)
     port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
     url = f'http://localhost:{port}/{call}'
     res = requests.get(url, auth=auth)
-    res.raise_for_status()
+    try:
+        res.raise_for_status()
+    except Exception:
+        assert(raises_error)
+        return
     try:
         val = res.json()
     except json.decoder.JSONDecodeError:
@@ -361,24 +370,48 @@ def test_api__bad_resource_type(mocked_api):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("call,result,body", [
-                        ('job/add', False, {'a': 'b'}),
-                        ('job/update', False, {'a': 'b'}),
-                        ('job/add', True, {}),
-                        ('job/update', True, {}),
-                        ('resource/add', False, {'a': 'b'}),
-                        ('resource/update', False, {'a': 'b'}),
-                        ('resource/add', True, {}),
-                        ('resource/update', True, {})
+def test_api__allowed_types(mocked_api):
+    crud = ['READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE']
+    job_only = ['PAUSE', 'RESUME', 'STATUS']
+    _allowed_types: Dict[str, List] = {
+        'job': crud + job_only,
+        'resource': crud
+    }
+    for name, allowed_ops in _allowed_types.items():
+        assert(name) in mocked_api._allowed_types.keys()
+        for op in allowed_ops:
+            assert(op in mocked_api._allowed_types[name])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("call,result,body,raises_error", [
+                        ('job/add', False, {'a': 'b'}, False),
+                        ('job/update', False, {'a': 'b'}, False),
+                        ('job/add', True, {}, False),
+                        ('job/update', True, {}, False),
+                        ('job/status', [], {'id': 'someid'}, False),
+                        ('job/pause', True, {'id': 'someid'}, False),
+                        ('job/resume', True, {'id': 'someid'}, False),
+                        ('resource/add', False, {'a': 'b'}, False),
+                        ('resource/update', False, {'a': 'b'}, False),
+                        ('resource/add', True, {}, False),
+                        ('resource/update', True, {}, False),
+                        ('resource/status', None, {'id': 'someid'}, True),  # these are now allowed
+                        ('resource/pause', None, {'id': 'someid'}, True),
+                        ('resource/resume', None, {'id': 'someid'}, True),
 ])
-def test_api_post_calls(call, result, body, mocked_api):
+def test_api_post_calls(call, result, body, raises_error, mocked_api):
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
     pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
     auth = requests.auth.HTTPBasicAuth(user, pw)
     port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
     url = f'http://localhost:{port}/{call}'
     res = requests.post(url, auth=auth, json=body)
-    res.raise_for_status()
+    try:
+        res.raise_for_status()
+    except Exception:
+        assert(raises_error)
+        return
     try:
         val = res.json()
     except json.decoder.JSONDecodeError:
@@ -717,9 +750,12 @@ def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
     ]
     callables: List[MockCallable] = [MockCallable() for i in range(len(suite))]
     _type = 'test'
+
+    # subscribe the listeners
     for x, (message, sub, fwd, rev) in enumerate(suite):
         task_helper.subscribe(callables[x].set_value, **sub)
 
+    # send messages in order
     for (message, sub, fwd, rev) in suite:
         task_helper.add(message, _type)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
@@ -732,6 +768,7 @@ def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
         LOG.debug(json.dumps([c.value.data if c.value else None for c in callables], indent=2))
         assert(res == fwd)
 
+    # send the messages in reverse order
     for (message, sub, fwd, rev) in suite[::-1]:
         task_helper.add(message, _type)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')

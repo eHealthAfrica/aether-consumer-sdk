@@ -23,7 +23,7 @@ import enum
 from functools import partial
 from time import sleep
 from threading import Thread
-from typing import Callable, ClassVar, Dict, Any
+from typing import Any, Callable, ClassVar, Dict, Union
 
 from .logger import LOG
 from .jsonpath import CachedParser
@@ -127,6 +127,11 @@ class BaseJob(object):
         self._thread = Thread(target=self._run)
         self._thread.start()
 
+    def get_status(self) -> Union[Dict[str, Any], str]:
+        # externally available information about this job.
+        # At a minimum should return the running status
+        return str(self.status)
+
     def stop(self, *args, **kwargs):
         self.status = JobStatus.STOPPED
 
@@ -151,6 +156,8 @@ class JobManager(object):
     task: TaskHelper
     job_class: Callable
 
+    # Start / Stop
+
     def __init__(self, task_master: TaskHelper, job_class: Callable = BaseJob):
         self.task = task_master
         self.job_class = job_class  # type: ignore
@@ -172,7 +179,7 @@ class JobManager(object):
         self.listen_for_job_change()
         self.listen_for_resource_change()
 
-    # Job Management
+    # Job Management, driven by Redis or other Indirect Events (Startup/ shutdown etc)
 
     def _init_job(
         self,
@@ -193,7 +200,7 @@ class JobManager(object):
     ) -> None:
         # Start a new job
         LOG.debug(f'starting job: {job}')
-        _id = self._get_id(job=job)
+        _id = job['id']
         self.jobs[_id] = self.job_class(_id)
         self._configure_job(job)
 
@@ -202,7 +209,7 @@ class JobManager(object):
         job: Dict[str, Any]
     ):
         # Configure an existing job
-        _id = self._get_id(job=job)
+        _id = job['id']
         LOG.debug(f'Configuring job {_id}')
         try:
             self._configure_job_resources(job)
@@ -242,13 +249,6 @@ class JobManager(object):
         for _type, resource_id in added_resources:
             self._init_resource(_type, resource_id, self.jobs[job_id])
 
-    def _pause_job(self, _id: str) -> None:
-        LOG.debug(f'pausing job: {_id}')
-        if _id in self.jobs:
-            self.jobs[_id].status = JobStatus.PAUSED
-        else:
-            LOG.debug(f'Could not find job {_id} to pause.')
-
     def _stop_job(self, _id: str) -> None:
         LOG.debug(f'stopping job: {_id}')
         if _id in self.jobs:
@@ -262,7 +262,39 @@ class JobManager(object):
         self._remove_resource_listeners(_id)
         del self.jobs[_id]
 
-    # Job Listening
+    # Direct API Driven job control / visibility functions
+
+    def pause_job(self, _id: str) -> bool:
+        LOG.debug(f'pausing job: {_id}')
+        if _id in self.jobs:
+            self.jobs[_id].status = JobStatus.PAUSED
+            return True
+        else:
+            LOG.debug(f'Could not find job {_id} to pause.')
+            return False
+
+    def resume_job(self, _id: str) -> bool:
+        LOG.debug(f'pausing job: {_id}')
+        if _id in self.jobs:
+            self.jobs[_id].status = JobStatus.NORMAL
+            return True
+        else:
+            LOG.debug(f'Could not find job {_id} to pause.')
+            return False
+
+    def get_job_status(self, _id: str) -> Union[Dict[str, Any], str]:
+        if _id in self.jobs:
+            return self.jobs[_id].get_status()
+        else:
+            return f'no job with id:{_id}'
+
+    #############
+    #
+    # Listening and Callbacks
+    #
+    #############
+
+    # register generic listeners on a redis path
 
     def listen_for_job_change(self):
         _path = type(self)._job_redis_path
@@ -270,6 +302,7 @@ class JobManager(object):
         self.task.subscribe(self.on_job_change, _path)
 
     def listen_for_resource_change(self):
+        # handles work for all resource types
         for _type, rule in type(self)._resources.items():
             redis_path = rule['redis_path']
             LOG.debug(f'Listening for resource {_type} on {redis_path}')
@@ -277,6 +310,7 @@ class JobManager(object):
             callback = partial(self.on_resource_change, _type)
             self.task.subscribe(callback, redis_path)
 
+    # attach a resource listener to a job that depends on it
     def _register_resource_listener(
         self,
         _type: str,
@@ -300,6 +334,7 @@ class JobManager(object):
         listening_jobs.append(job)
         return True
 
+    # remove all resource listeners for shutdown
     def _remove_resource_listeners(self, job_id: str) -> None:
         # remove all resource listeners for a job with id -> job_id
         for _type in self.resources.keys():
@@ -308,6 +343,7 @@ class JobManager(object):
                 self.resources[_type][resource_id] = jobs
         return
 
+    # manually go out and grab a resource // happens on startup
     def _init_resource(
         self,
         _type: str,
@@ -319,6 +355,7 @@ class JobManager(object):
         job.set_resource(_type, res)
         return
 
+    # generic handler called on change of any resource. Dispatched to dependant jobs
     def on_resource_change(
         self,
         _type: str,
@@ -344,6 +381,7 @@ class JobManager(object):
                           f' {_type}:{msg.id}. Stopping.')
                 job.stop()
 
+    # generic job change listener then dispatched to the proper job / creates new job
     def on_job_change(self, msg: Task) -> None:
         LOG.debug(f'Consumer received cmd: "{msg.type}" on job: {msg.id}')
         if msg.type == 'set':
@@ -354,21 +392,15 @@ class JobManager(object):
             _id = self._get_id(msg)  # just the id
             self._remove_job(_id)
 
-    # utility
+    #############
+    #
+    # Utility
+    #
+    #############
 
     def _get_id(
         self,
-        task: Task = None,
-        job: dict = None
+        msg: Task,
     ) -> str:
-
         # from a signal
-        if task:
-            _id = task.id.split(type(self)._job_redis_name)[1]
-        elif job:
-            _id = job['id']
-        return _id
-
-    def get_status(self, _type, _id):
-        # There are likely different ways of getting the status for each type
-        return 'unknown'
+        return msg.id.split(type(self)._job_redis_name)[1]

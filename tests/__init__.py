@@ -106,6 +106,15 @@ class MockConsumer(BaseConsumer):
             'resource': MockConsumer.STRICT_SCHEMA
         }
 
+    def pause(self, *args, **kwargs) -> bool:
+        return True
+
+    def resume(self, *args, **kwargs) -> bool:
+        return True
+
+    def status(self, *args, **kwargs) -> List:
+        return []
+
 
 def send_plain_messages(producer, topic, schema, messages, encoding, is_json=True):
     for msg in messages:
