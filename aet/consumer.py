@@ -31,6 +31,7 @@ EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
 class BaseConsumer(object):
 
+    api: APIServer
     task: TaskHelper
     job_manager: JobManager
 
@@ -49,9 +50,12 @@ class BaseConsumer(object):
 
     def stop(self, *args, **kwargs):
         LOG.info('Shutting down')
-        self.api.stop()
-        self.task.stop()
-        self.job_manager.stop()
+        for service_name in ['api', 'task', 'job_manager']:
+            try:
+                service = getattr(self, service_name)
+                service.stop()
+            except AttributeError:
+                LOG.error(f'Consumer could not stop service {service_name}')
         LOG.info('Shutdown Complete')
 
     def load_schema(self, path=None):

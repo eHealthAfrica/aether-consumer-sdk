@@ -68,7 +68,11 @@ class BaseJob(object):
 
     def _run(self):
         try:
+            c = 0
             while self.status is not JobStatus.STOPPED:
+                c += 1
+                if c % 10000 == 0:
+                    LOG.debug(f'thread {self._id} running : {self.status}')
                 if self.status is JobStatus.PAUSED:
                     sleep(0.01)  # wait for the status to change
                     continue

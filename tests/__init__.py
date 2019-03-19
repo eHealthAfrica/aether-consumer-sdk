@@ -339,20 +339,25 @@ def offline_consumer():
 @pytest.mark.unit
 @pytest.fixture(scope="module")
 def mocked_consumer():
-    return MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+    consumer = MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+    yield consumer
+    LOG.debug('Fixture mocked_consumer complete, stopping.')
+    consumer.stop()
+    sleep(.5)
 
 
 @pytest.mark.integration
 @pytest.fixture(scope="module")
-def consumer():
+def consumer() -> Iterable[BaseConsumer]:
     # mock API from unit tests not shutdown until end avoid it's port and name
     os.environ['CONSUMER_NAME'] = 'BaseConsumer'
     os.environ['EXPOSE_PORT'] = '9014'
     _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
     _consumer.schema = {}  # blank schema
-    sleep(2)
+    sleep(1)
     yield _consumer
     # teardown
+    LOG.debug('Fixture consumer complete, stopping.')
     _consumer.stop()
     sleep(.5)
 
@@ -360,7 +365,7 @@ def consumer():
 # API Assets
 @pytest.mark.unit
 @pytest.fixture(scope="module")
-def mocked_api(mocked_consumer):
+def mocked_api(mocked_consumer) -> Iterable[APIServer]:
     api = APIServer(
         mocked_consumer,
         mocked_consumer.task,
@@ -369,14 +374,17 @@ def mocked_api(mocked_consumer):
     api.serve()
     yield api
     # teardown
+    LOG.debug('Fixture api complete, stopping.')
     api.stop()
     sleep(.5)
 
 
 # TaskHelper Assets
 @pytest.mark.integration
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="module")
 def task_helper() -> Iterable[TaskHelper]:
     helper = TaskHelper(settings.CONSUMER_CONFIG)
     yield helper
+    LOG.debug('Fixture task_helper complete, stopping.')
     helper.stop()
+    sleep(.5)

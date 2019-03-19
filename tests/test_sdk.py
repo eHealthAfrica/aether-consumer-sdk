@@ -415,7 +415,8 @@ def test_consumer__startup_shutdown(consumer):
 def test_consumer__job_registration(consumer: BaseConsumer):
     _id = '001'
     job_def = {'id': _id, 'purpose': 'counter'}
-    consumer.task.add(job_def, type='job')
+    res = consumer.task.add(job_def, type='job')
+    assert(isinstance(res, bool))
     redis_subscribe_delay = 1  # lots of checking on job change
     sleep(redis_subscribe_delay)
     assert(_id in consumer.job_manager.jobs.keys())
