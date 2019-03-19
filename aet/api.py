@@ -39,8 +39,8 @@ class APIServer(object):
     # consumed by the restrict_types decorator
     _allowed_types: ClassVar[Dict[str, List]] = {
         'job': [
-            'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE',
-            'PAUSE', 'RESUME', 'STATUS'  # Only valid for jobs
+            'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE',  # These are generic crud
+            'PAUSE', 'RESUME', 'STATUS'  # These are only valid for jobs
         ],
         'resource': [
             'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE'
@@ -125,6 +125,7 @@ class APIServer(object):
 
     def add_endpoints(self) -> None:
         # URLS configured here
+        # this MUST be done at runtime. Can't set the routes via decorator
         # Add endpoints for all registered types
         self.register(
             '<string:_type>/add',
@@ -173,7 +174,6 @@ class APIServer(object):
         self.register('healthcheck', self.request_healthcheck)
 
     def register(self, route_name, fn, **options) -> None:
-        # this MUST be done at runtime. Can't set the routes via decorator
         self.app.add_url_rule('/%s' % route_name, route_name, view_func=fn, **options)
 
     #######
