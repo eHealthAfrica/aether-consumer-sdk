@@ -123,8 +123,13 @@ class TaskHelper(object):
         })
         LOG.debug(f'Added {keyspace}')
 
-    # wraps the callback function so that the message instead of the event will be returned
-    def _subscriber_wrapper(self, fn: Callable, registered_channel: str) -> Callable:
+    def _subscriber_wrapper(
+        self,
+        fn: Callable,
+        registered_channel: str
+    ) -> Callable:
+        # wraps the callback function so that the message instead of the event will be returned
+
         def wrapper(msg) -> None:
             LOG.debug(f'callback got message: {msg}')
             channel = msg['channel']
@@ -146,7 +151,7 @@ class TaskHelper(object):
                     id=_id,
                     type=redis_op
                 )
-            fn(res)  # Call registered function with proper data
+            fn(res)  # On callback, hit registered function with proper data
         return wrapper
 
     def _unsubscribe_all(self) -> None:
@@ -160,5 +165,8 @@ class TaskHelper(object):
             self._subscribe_thread._running = False
             try:
                 self._subscribe_thread.stop()
-            except redis.exceptions.ConnectionError:
+            except (
+                redis.exceptions.ConnectionError,
+                AttributeError
+            ):
                 LOG.error('Could not explicitly stop subscribe thread: no connection')

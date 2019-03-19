@@ -20,6 +20,7 @@
 
 import json
 import jsonschema
+from time import sleep
 
 from .api import APIServer
 from .logger import LOG
@@ -56,6 +57,7 @@ class BaseConsumer(object):
                 service.stop()
             except AttributeError:
                 LOG.error(f'Consumer could not stop service {service_name}')
+        sleep(.25)
         LOG.info('Shutdown Complete')
 
     def load_schema(self, path=None):
@@ -81,9 +83,3 @@ class BaseConsumer(object):
         for _id in self.task.list(type=_type):
             status[_id] = self.job_manager.get_status(_type, _id)
         return status
-
-
-if __name__ == '__main__':
-    from .settings import CONSUMER_CONFIG, KAFKA_CONFIG
-    consumer = BaseConsumer(CONSUMER_CONFIG, KAFKA_CONFIG)
-    consumer.serve_api(consumer.consumer_settings)

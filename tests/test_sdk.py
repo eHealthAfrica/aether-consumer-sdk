@@ -393,9 +393,6 @@ def test_api_post_calls(call, result, body, mocked_api):
 #
 #####
 
-redis_subscribe_delay = 0.05
-
-
 # real consumer
 @pytest.mark.integration
 def test_consumer__startup_shutdown(consumer):
@@ -413,6 +410,7 @@ def test_consumer__startup_shutdown(consumer):
 # real consumer
 @pytest.mark.integration
 def test_consumer__job_registration(consumer: BaseConsumer):
+    redis_subscribe_delay = 0.25
     _id = '001'
     job_def = {'id': _id, 'purpose': 'counter'}
     res = consumer.task.add(job_def, type='job')
@@ -441,7 +439,7 @@ def test_consumer__job_registration(consumer: BaseConsumer):
 # real consumer
 @pytest.mark.integration
 def test_consumer__job_registration_with_resource(consumer: BaseConsumer):
-    redis_subscribe_delay = 1  # lots of checking on job change
+    redis_subscribe_delay = 0.25
     res_def = {
         'id': 'res-001',
         'value': 1000000
@@ -477,7 +475,7 @@ def test_consumer__job_registration_with_resource(consumer: BaseConsumer):
 # real consumer
 @pytest.mark.integration
 def test_consumer__job_registration_failed_missing_resource(consumer: BaseConsumer):
-    redis_subscribe_delay = 1  # lots of checking on job change
+    redis_subscribe_delay = 0.05
     _id = '003'
     job_def = {
         'id': _id,
@@ -496,7 +494,7 @@ def test_consumer__job_registration_failed_missing_resource(consumer: BaseConsum
 # real consumer
 @pytest.mark.integration
 def test_consumer__job_registration_hanging_resource_reference(consumer: BaseConsumer):
-    redis_subscribe_delay = 1  # lots of checking on job change
+    redis_subscribe_delay = 0.25
     _id = '004'
     res_def = {
         'id': f'res-{_id}',
@@ -544,7 +542,8 @@ def test_consumer__job_registration_hanging_resource_reference(consumer: BaseCon
 # real consumer
 @pytest.mark.integration
 def test_consumer__job_multicast_receive_resource(consumer: BaseConsumer):
-    redis_subscribe_delay = 1  # lots of checking on job change
+    redis_subscribe_delay = 0.25
+    # redis_subscribe_delay = 1  # lots of checking on job change
     _id = '005'
     res_def = {
         'id': f'res-{_id}',
@@ -585,14 +584,17 @@ def test_consumer__job_multicast_receive_resource(consumer: BaseConsumer):
 # real consumer
 @pytest.mark.integration
 def test_consumer__job_persistence(consumer):
-    _id = '001'
+    redis_subscribe_delay = 0.25
+    _id = '006'
     job_def = {'id': _id, 'purpose': 'counter'}
     consumer.task.add(job_def, type='job')
     sleep(redis_subscribe_delay)
     assert(_id in consumer.job_manager.jobs.keys())
     consumer.job_manager.stop()
     consumer.job_manager._init_jobs()
+    sleep(redis_subscribe_delay)
     assert(_id in consumer.job_manager.jobs.keys())
+    consumer.task.remove(_id, type='job')
 
 
 # mock consumer
@@ -664,6 +666,7 @@ def test_redis_get_methods(task_helper: TaskHelper):
 ])
 def test_redis_subscibe__succeed(task_helper, message, sub):
     # TaskID in redis is : _{type}:{_id}
+    redis_subscribe_delay = 0.05
     _type = 'test'
     LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
     callable: MockCallable = MockCallable()
@@ -687,6 +690,7 @@ def test_redis_subscibe__succeed(task_helper, message, sub):
     (redis_messages[1], {'pattern': '_test:00002_01'})
 ])
 def test_redis_subscibe__fail(task_helper, message, sub):
+    redis_subscribe_delay = 0.05
     _type = 'test'
     LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
     callable: MockCallable = MockCallable()
