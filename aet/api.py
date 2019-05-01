@@ -277,7 +277,7 @@ class APIServer(object):
     def handle_crud(self, request: Request, operation: str, _type: str):
         self.app.logger.debug(request)
         _id = request.args.get('id', None)
-        response: Union[str, List, Dict, bool]
+        response: Union[str, List, Dict, bool]  # anything compat with jsonify
         if operation == 'CREATE':
             if self.consumer.validate(request.get_json(), _type=_type):
                 response = self.task.add(request.get_json(), type=_type)

@@ -95,7 +95,7 @@ class BaseJob(object):
                 _config, _resources = self._copy_settings()
                 messages = self._get_messages(_config, _resources)
                 if messages:
-                    self._handle_messages(_config, _resources)
+                    self._handle_messages(_config, _resources, messages)
             LOG.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
             LOG.critical(f'job {self._id} failed with critical error {fatal}')
@@ -112,7 +112,7 @@ class BaseJob(object):
         # probably needs custom implementation for each consumer
         return [1, 2]  # get from Kafka or...
 
-    def _handle_messages(self, config, resources):
+    def _handle_messages(self, config, resources, messages):
         # probably needs custom implementation for each consumer
         # Do something based on the messages
         sleep(self.sleep_delay)
