@@ -19,44 +19,44 @@
 # under the License.
 set -Eeuo pipefail
 
-function kill_all(){
+function kill_all {
   echo "_________________________________________________ Killing Containers"
-  $DC_TEST kill
-  $DC_TEST down
+  docker-compose kill
+  docker-compose down
 }
 
-DC_TEST="docker-compose -f docker-compose.yml"
-MODE=null
-if [[ $1 == "integration" ]]
-then
-    MODE="test_integration"
+MODE=test
+SCAFFOLD=True
+
+if [[ "${1:-}" == "integration" ]]; then
+    MODE=test_integration
     SCAFFOLD=True
-elif [[ $1 == "unit" ]]
-then
-    MODE="test_unit"
+
+elif [[ "${1:-}" == "unit" ]]; then
+    MODE=test_unit
     SCAFFOLD=False
-else
-    echo "no valid (unit, integration) test type indicated. Running both."
-    MODE="test"
-    SCAFFOLD=True
+
+elif [[ "${1:-}" == "lint" ]]; then
+    MODE=test_lint
+    SCAFFOLD=False
 fi
 
 kill_all
 if [[ $SCAFFOLD == True ]]
 then
-    echo "_____________________________________________ Starting Kafka"
-    $DC_TEST up -d zookeeper-test kafka-test redis-test
+    echo "_________________________________________________ Starting Kafka"
+    docker-compose up -d zookeeper-test kafka-test redis-test
 fi
 
-echo "_____________________________________________ Starting Python Tests in mode $MODE"
+echo "_________________________________________________ Starting Python Tests in mode $MODE"
 
 echo "_________________________________________________ Building container"
-$DC_TEST build consumer-test
+docker-compose build consumer-test
+
 echo "_________________________________________________ Running tests: $MODE"
-$DC_TEST run consumer-test $MODE
+docker-compose run consumer-test $MODE
 
-echo "_____________________________________________ Finished Test"
-
+echo "_________________________________________________ Finished Test"
 kill_all
 
-echo "_____________________________________________ END"
+echo "_________________________________________________ END"

@@ -18,6 +18,29 @@
 # specific language governing permissions and limitations
 # under the License.
 #
+set -Eeuo pipefail
 
+# ----------------------------------------
+# remove previous packages if needed
+# ----------------------------------------
+rm -rf dist
+rm -rf build
+rm -rf .eggs
+rm -rf aet.consumer.egg-info
+
+# ----------------------------------------
+# create the distribution package
+# ----------------------------------------
+export VERSION=$TRAVIS_TAG
+python3 setup.py bdist_wheel
+
+# ----------------------------------------
+# remove useless content
+# ----------------------------------------
+rm -rf build
+rm -rf aet.consumer.egg-info
+
+# ----------------------------------------
+# upload to PyPi repository
+# ----------------------------------------
 twine upload -r pypi ./dist/* --verbose
-

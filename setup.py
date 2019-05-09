@@ -18,24 +18,42 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import os
 from setuptools import setup, find_packages
+
+VERSION = os.environ.get('VERSION', '1.0.0')
 
 setup(
     name='aet.consumer',
+    version=VERSION,
+
     author='Shawn Sarwar',
-    author_email="shawn.sarwar@ehealthafrica.org",
-    description='''A library to consume messages from Kafka with added functionality based on
-        Aether's schema metadata''',
-    version='1.0.0',
-    setup_requires=['pytest-runner'],
-    tests_require=['pytest', 'mock'],
+    author_email='shawn.sarwar@ehealthafrica.org',
+
     url='https://github.com/eHealthAfrica/aether-consumer-sdk',
+    description='''
+        A library to consume messages from Kafka with added functionality based on
+        Aether's schema metadata
+    ''',
+    license='Apache2 License',
+
+    python_requires='>=3.6',
     install_requires=[
-        "flask",
-        "kafka-python",
-        "jsonpath_ng",
-        "jsonschema",
-        "spavro"
+        'flask',
+        'jsonpath_ng',
+        'jsonschema',
+        'kafka-python',
+        'redis',
+        'requests',
+        'spavro',
+        'webtest',
+    ],
+    tests_require=[
+        'flake8',
+        'pytest',
+        'pytest-cov',
+        'pytest-lazy-fixture',
+        'pytest-runner',
     ],
     packages=find_packages(),
     namespace_packages=['aet'],
@@ -43,7 +61,10 @@ setup(
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 3'
+        'License :: OSI Approved :: Apache Source License',
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python :: 3 :: Only',
+        'Topic :: Software Development :: Libraries :: Python Modules',
     ]
 )

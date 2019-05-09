@@ -1,0 +1,23 @@
+################################################################################
+#                                                                              #
+#                           Requirements for testing                           #
+#                                                                              #
+################################################################################
+
+flask
+jsonpath_ng
+jsonschema
+kafka-python
+redis
+requests
+spavro
+webtest
+
+
+# Test libraries
+
+flake8
+pytest
+pytest-cov
+pytest-lazy-fixture
+pytest-runner

@@ -22,7 +22,6 @@ import requests
 
 from . import *  # noqa
 from aet.job import BaseJob, JobStatus
-
 from aet.kafka import KafkaConsumer
 
 # Test Suite contains both unit and integration tests
@@ -32,7 +31,6 @@ from aet.kafka import KafkaConsumer
 # `docker-compose run consumer-sdk-test bash`
 # then start the unit tests with
 # `pytest -m unit`
-# to run integration tests / all tests run the test_all.sh script from the /tests directory.
 
 
 ######
@@ -71,7 +69,6 @@ def test_settings_check(fake_settings):
     (pytest.lazy_fixture('messages_test_text_ascii'), 'TestPlainMessagesASCII', False),
     (pytest.lazy_fixture('messages_test_text_utf8'), 'TestPlainMessagesUTF', False)
 ])
-@pytest.mark.integration
 def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args):
     _ids = [m['id'] for m in messages]
     # topic = "TestPlainMessages"
@@ -756,10 +753,8 @@ def test_consumer__job_persistence(consumer):
 @pytest.mark.unit
 def test_load_schema_validate(mocked_consumer):
     c = mocked_consumer
-    permissive = c.load_schema('/code/conf/schema/permissive.json')
-    strict = c.load_schema('/code/conf/schema/strict.json')
-    with pytest.raises(AttributeError):
-        c.load_schema(path=None)
+    permissive = c.load_schema(os.path.join(here, 'assets/schema/permissive.json'))
+    strict = c.load_schema(os.path.join(here, 'assets/schema/strict.json'))
     job = {'a': 1}
     assert(c.validate(job, schema=permissive) is True)
     assert(c.validate(job, schema=strict) is False)
