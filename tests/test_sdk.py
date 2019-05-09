@@ -30,7 +30,6 @@ from aet.kafka import KafkaConsumer
 # `docker-compose run consumer-sdk-test bash`
 # then start the unit tests with
 # `pytest -m unit`
-# to run integration tests / all tests run the test_all.sh script from the /tests directory.
 
 
 ######
@@ -69,7 +68,6 @@ def test_settings_check(fake_settings):
     (pytest.lazy_fixture('messages_test_text_ascii'), 'TestPlainMessagesASCII', False),
     (pytest.lazy_fixture('messages_test_text_utf8'), 'TestPlainMessagesUTF', False)
 ])
-@pytest.mark.integration
 def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args):
     _ids = [m['id'] for m in messages]
     # topic = "TestPlainMessages"
@@ -390,8 +388,8 @@ def test_consumer_startup_shutdown(consumer):
 @pytest.mark.unit
 def test_load_schema_validate(mocked_consumer):
     c = mocked_consumer
-    permissive = c.load_schema('/code/conf/schema/permissive.json')
-    strict = c.load_schema('/code/conf/schema/strict.json')
+    permissive = c.load_schema(os.path.join(here, 'assets/schema/permissive.json'))
+    strict = c.load_schema(os.path.join(here, 'assets/schema/strict.json'))
     job = {'a': 1}
     assert(c.validate_job(job, permissive) is True)
     assert(c.validate_job(job, strict) is False)
