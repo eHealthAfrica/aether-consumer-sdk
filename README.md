@@ -44,7 +44,7 @@ The SDK includes a basic data model consisting of two types.
     }
     ```
 
-### Data Type Defintion
+### Data Type Definition
 
 Each implementation will need something different from `Resource` a `Job`. As such, we need to define a schema for what a valid `Job` and `Resource` should consist of. The schema itself is a JSONSchema that descibes the valid structure for the type.
 
@@ -61,23 +61,23 @@ The exposed endpoints are as follow:
 
 _All Types_:
 
-| Endpoint            |  Operation    | Allowed Methods          |
-| ------------------- | :-----------: | ------------------------ |
-| `/{type}/add`       | `CREATE`      | `[POST or GET ?id={id}]` |
-| `/{type}/delete`    | `DELETE`      | `[POST or GET ?id={id}]` |
-| `/{type}/update`    | `CREATE`      | `[POST as json]`         |
-| `/{type}/validate`  | `VALIDATE`    | `[POST as json]`         |
-| `/{type}/schema`    | `SCHEMA`      | `[POST or GET ?id={id}]` |
-| `/{type}/get`       | `READ`        | `[POST or GET ?id={id}]` |
-| `/{type}/list`      | `GET (all)`   | `[GET]`                  |
+| Endpoint            |  Operation    | Allowed Methods                 |
+| ------------------- | :-----------: | ------------------------        |
+| `/{type}/add`       | `CREATE`      | `[POST as json]`                |
+| `/{type}/delete`    | `DELETE`      | `[POST or GET/DELETE ?id={id}]` |
+| `/{type}/update`    | `CREATE`      | `[POST as json]`                |
+| `/{type}/validate`  | `VALIDATE`    | `[POST as json]`                |
+| `/{type}/schema`    | `SCHEMA`      | `[POST or GET ?id={id}]`        |
+| `/{type}/get`       | `READ`        | `[POST or GET ?id={id}]`        |
+| `/{type}/list`      | `GET (all)`   | `[GET]`                         |
 
 _Jobs only_:
 
-| Endpoint            |  Operation    | Allowed Methods          |
-| ------------------- | :-----------: | ------------------------ |
-| `/{type}/pause`     | `PAUSE`       | `[POST or GET ?id={id}]` |
-| `/{type}/resume`    | `RESUME`      | `[POST or GET ?id={id}]` |
-| `/{type}/status`    | `STATUS`      | `[POST or GET ?id={id}]` |
+| Endpoint            |  Operation    | Allowed Methods                 |
+| ------------------- | :-----------: | ------------------------        |
+| `/{type}/pause`     | `PAUSE`       | `[POST or GET ?id={id}]`        |
+| `/{type}/resume`    | `RESUME`      | `[POST or GET ?id={id}]`        |
+| `/{type}/status`    | `STATUS`      | `[POST or GET ?id={id}]`        |
 
 For example, to get the `job` with `id = 0001` you send a GET request to:
 `http://consumer-url/job/get?id=0001` 

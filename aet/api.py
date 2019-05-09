@@ -135,7 +135,7 @@ class APIServer(object):
         self.register(
             '<string:_type>/delete',
             self.remove,
-            methods=['GET', 'POST'])
+            methods=['GET', 'POST', 'DELETE'])
 
         self.register(
             '<string:_type>/update',
