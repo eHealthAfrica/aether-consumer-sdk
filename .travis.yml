@@ -9,4 +9,4 @@ services:
 install: true
 
 script:
-  - ./scripts/test.sh
+  - ./scripts/test.sh both
