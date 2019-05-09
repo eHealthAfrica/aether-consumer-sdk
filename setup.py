@@ -18,24 +18,27 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import os
 from setuptools import setup, find_packages
+
+VERSION = os.environ.get('VERSION', '1.0.0')
 
 setup(
     name='aet.consumer',
     author='Shawn Sarwar',
-    author_email="shawn.sarwar@ehealthafrica.org",
+    author_email='shawn.sarwar@ehealthafrica.org',
     description='''A library to consume messages from Kafka with added functionality based on
         Aether's schema metadata''',
-    version='1.0.0',
+    version=VERSION,
     setup_requires=['pytest-runner'],
     tests_require=['pytest', 'mock'],
     url='https://github.com/eHealthAfrica/aether-consumer-sdk',
     install_requires=[
-        "flask",
-        "kafka-python",
-        "jsonpath_ng",
-        "jsonschema",
-        "spavro"
+        'flask',
+        'kafka-python',
+        'jsonpath_ng',
+        'jsonschema',
+        'spavro',
     ],
     packages=find_packages(),
     namespace_packages=['aet'],
