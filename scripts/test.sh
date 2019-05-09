@@ -35,6 +35,10 @@ if [[ "${1:-}" == "integration" ]]; then
 elif [[ "${1:-}" == "unit" ]]; then
     MODE=test_unit
     SCAFFOLD=False
+
+elif [[ "${1:-}" == "lint" ]]; then
+    MODE=test_lint
+    SCAFFOLD=False
 fi
 
 kill_all
@@ -48,9 +52,6 @@ echo "_________________________________________________ Starting Python Tests in
 
 echo "_________________________________________________ Building container"
 docker-compose build consumer-test
-
-echo "_________________________________________________ Running tests: lint"
-docker-compose run consumer-test test_lint
 
 echo "_________________________________________________ Running tests: $MODE"
 docker-compose run consumer-test $MODE

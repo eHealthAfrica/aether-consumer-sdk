@@ -20,14 +20,16 @@
 
 import io
 import json
-import mock
-import pytest
 import os
+import pytest
+from unittest import mock
 
 from time import sleep
 from copy import deepcopy
+
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
+
 from spavro.datafile import DataFileWriter
 from spavro.io import DatumWriter
 from spavro.schema import parse as ParseSchema
@@ -36,10 +38,10 @@ from aet import settings
 from aet.api import APIServer
 from aet.consumer import BaseConsumer
 from aet.kafka import KafkaConsumer
+from aet.logger import LOG
 from aet.task import TaskHelper
 
 from .assets.schemas import test_schemas
-from aet.logger import LOG
 
 here = os.path.dirname(os.path.realpath(__file__))
 

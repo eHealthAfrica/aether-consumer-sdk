@@ -18,7 +18,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import os
 import requests
 
 from . import *  # noqa
@@ -31,10 +30,6 @@ from aet.kafka import KafkaConsumer
 # `docker-compose run consumer-sdk-test bash`
 # then start the unit tests with
 # `pytest -m unit`
-# to run integration tests / all tests run the test_all.sh script from the /tests directory.
-
-
-here = os.path.dirname(os.path.realpath(__file__))
 
 
 ######
@@ -73,7 +68,6 @@ def test_settings_check(fake_settings):
     (pytest.lazy_fixture('messages_test_text_ascii'), 'TestPlainMessagesASCII', False),
     (pytest.lazy_fixture('messages_test_text_utf8'), 'TestPlainMessagesUTF', False)
 ])
-@pytest.mark.integration
 def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args):
     _ids = [m['id'] for m in messages]
     # topic = "TestPlainMessages"

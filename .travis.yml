@@ -14,7 +14,7 @@ matrix:
     - name: "Test"
       stage: test
       install: true
-      script: ./scripts/test.sh both
+      script: ./scripts/test.sh
 
     - name: "Release"
       stage: deploy

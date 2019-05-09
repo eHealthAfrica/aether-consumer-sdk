@@ -28,47 +28,36 @@ function show_help {
 
     test                : run all tests
     test_lint           : run flake8 tests
-    test_unit           : run unit tests with coverage output
+    test_unit           : run unit tests
     test_integration    : run integration tests
 
     """
 }
 
-function test_flake8 {
-    flake8
-}
-
-function test_integration {
-    echo 'Running Integration Tests...'
-    pytest -m integration $PYTEST_OPT
-}
-
-function test_unit {
-    echo 'Running Unit Tests...'
-    pytest -m unit $PYTEST_OPT
-}
-
 export PYTHONDONTWRITEBYTECODE=1
-PYTEST_OPT="-p no:cacheprovider"  # disable __pycache__ which pollutes local FS
+PYTEST="pytest --cov-report term-missing --cov=aet -p no:cacheprovider"
 
 case "$1" in
 
     test )
-        test_flake8
-        test_unit
-        test_integration
+        echo 'Running ALL Tests...'
+        flake8
+        $PYTEST
     ;;
 
     test_lint )
-        test_flake8
+        echo 'Running Lint Tests...'
+        flake8
     ;;
 
     test_unit )
-        test_unit
+        echo 'Running Unit Tests...'
+        $PYTEST -m unit
     ;;
 
     test_integration )
-        test_integration
+        echo 'Running Integration Tests...'
+        $PYTEST -m integration
     ;;
 
     *)

@@ -11,14 +11,13 @@ kafka-python
 redis
 requests
 spavro
+webtest
 
 
 # Test libraries
 
 flake8
-mock
 pytest
 pytest-cov
 pytest-lazy-fixture
 pytest-runner
-webtest
