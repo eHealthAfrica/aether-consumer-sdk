@@ -18,6 +18,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import os
 import requests
 
 from . import *  # noqa
@@ -31,6 +32,9 @@ from aet.kafka import KafkaConsumer
 # then start the unit tests with
 # `pytest -m unit`
 # to run integration tests / all tests run the test_all.sh script from the /tests directory.
+
+
+here = os.path.dirname(os.path.realpath(__file__))
 
 
 ######
@@ -390,8 +394,8 @@ def test_consumer_startup_shutdown(consumer):
 @pytest.mark.unit
 def test_load_schema_validate(mocked_consumer):
     c = mocked_consumer
-    permissive = c.load_schema('/code/conf/schema/permissive.json')
-    strict = c.load_schema('/code/conf/schema/strict.json')
+    permissive = c.load_schema(os.path.join(here, 'assets/schema/permissive.json'))
+    strict = c.load_schema(os.path.join(here, 'assets/schema/strict.json'))
     job = {'a': 1}
     assert(c.validate_job(job, permissive) is True)
     assert(c.validate_job(job, strict) is False)
