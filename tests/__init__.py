@@ -18,14 +18,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from copy import deepcopy
 import io
 import json
 import os
 import pytest
-from unittest import mock
-
 from time import sleep
-from copy import deepcopy
+from typing import ClassVar, List, Iterable, Optional  # noqa
+from unittest import mock
 
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
@@ -37,9 +37,10 @@ from spavro.schema import parse as ParseSchema
 from aet import settings
 from aet.api import APIServer
 from aet.consumer import BaseConsumer
+from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.logger import LOG
-from aet.task import TaskHelper
+from aet.task import TaskHelper, Task
 
 from .assets.schemas import test_schemas
 
@@ -54,10 +55,9 @@ topic_size = 500
 
 
 class MockCallable(object):
-    def __init__(self):
-        self.value = None
+    value: Optional[Task] = None
 
-    def set_value(self, msg):
+    def set_value(self, msg: Task):
         LOG.debug(f'MockCallable got msg: {msg}')
         self.value = msg
 
@@ -85,14 +85,14 @@ class MockTaskHelper(object):
 
 class MockConsumer(BaseConsumer):
 
-    PERMISSIVE_SCHEMA = {  # should match anything
+    PERMISSIVE_SCHEMA: ClassVar[dict] = {  # should match anything
         'type': 'object',
         'additionalProperties': True,
         'properties': {
         }
     }
 
-    STRICT_SCHEMA = {  # should match nothing but empty brackets -> {}
+    STRICT_SCHEMA: ClassVar[dict] = {  # should match nothing but empty brackets -> {}
         'type': 'object',
         'additionalProperties': False,
         'properties': {
@@ -104,7 +104,19 @@ class MockConsumer(BaseConsumer):
         self.kafka_settings = KAFKA_CONF
         self.children = []
         self.task = MockTaskHelper()
-        self.schema = MockConsumer.STRICT_SCHEMA
+        self.schemas = {
+            'job': MockConsumer.STRICT_SCHEMA,
+            'resource': MockConsumer.STRICT_SCHEMA
+        }
+
+    def pause(self, *args, **kwargs) -> bool:
+        return True
+
+    def resume(self, *args, **kwargs) -> bool:
+        return True
+
+    def status(self, *args, **kwargs) -> List:
+        return []
 
 
 def send_plain_messages(producer, topic, schema, messages, encoding, is_json=True):
@@ -339,19 +351,25 @@ def offline_consumer():
 @pytest.mark.unit
 @pytest.fixture(scope="module")
 def mocked_consumer():
-    return MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+    consumer = MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+    yield consumer
+    LOG.debug('Fixture mocked_consumer complete, stopping.')
+    consumer.stop()
+    sleep(.5)
 
 
 @pytest.mark.integration
 @pytest.fixture(scope="module")
-def consumer():
-    _settings = dict(settings.CONSUMER_CONFIG)
+def consumer() -> Iterable[BaseConsumer]:
     # mock API from unit tests not shutdown until end avoid it's port and name
-    _settings['CONSUMER_NAME'] = 'BaseConsumer'
-    _settings['EXPOSE_PORT'] = 9014
-    _consumer = BaseConsumer(_settings, settings.KAFKA_CONFIG)
+    os.environ['CONSUMER_NAME'] = 'BaseConsumer'
+    os.environ['EXPOSE_PORT'] = '9014'
+    _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+    _consumer.schemas = {'resource': {}, 'job': {}}  # blank schemas
+    sleep(1)
     yield _consumer
     # teardown
+    LOG.debug('Fixture consumer complete, stopping.')
     _consumer.stop()
     sleep(.5)
 
@@ -359,22 +377,26 @@ def consumer():
 # API Assets
 @pytest.mark.unit
 @pytest.fixture(scope="module")
-def mocked_api(mocked_consumer):
+def mocked_api(mocked_consumer) -> Iterable[APIServer]:
     api = APIServer(
         mocked_consumer,
+        mocked_consumer.task,
         settings.CONSUMER_CONFIG
     )
     api.serve()
     yield api
     # teardown
+    LOG.debug('Fixture api complete, stopping.')
     api.stop()
     sleep(.5)
 
 
 # TaskHelper Assets
 @pytest.mark.integration
-@pytest.fixture(scope="function")
-def task_helper():
+@pytest.fixture(scope="module")
+def task_helper() -> Iterable[TaskHelper]:
     helper = TaskHelper(settings.CONSUMER_CONFIG)
     yield helper
+    LOG.debug('Fixture task_helper complete, stopping.')
     helper.stop()
+    sleep(.5)

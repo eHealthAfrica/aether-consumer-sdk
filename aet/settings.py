@@ -74,8 +74,8 @@ def check_required_fields(conf, fields):
     return found
 
 
-CONSUMER_CONFIG = Settings(file_path=os.environ.get('CONSUMER_CONFIG_PATH', None))
-KAFKA_CONFIG = Settings(file_path=os.environ.get('KAFKA_CONFIG_PATH', None))
+CONSUMER_CONFIG: Settings = Settings(file_path=os.environ.get('CONSUMER_CONFIG_PATH', None))
+KAFKA_CONFIG: Settings = Settings(file_path=os.environ.get('KAFKA_CONFIG_PATH', None))
 
 check_required_fields(CONSUMER_CONFIG, os.environ.get('REQUIRED_CONSUMER_CONFIG', '[]'))
 check_required_fields(KAFKA_CONFIG, os.environ.get('REQUIRED_KAFKA_CONFIG', '[]'))

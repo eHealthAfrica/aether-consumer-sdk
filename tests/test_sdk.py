@@ -21,6 +21,7 @@
 import requests
 
 from . import *  # noqa
+from aet.job import BaseJob, JobStatus
 from aet.kafka import KafkaConsumer
 
 # Test Suite contains both unit and integration tests
@@ -313,25 +314,86 @@ def test_msk_msg_custom_map(offline_consumer,
 
 ######
 #
+#  Jsonpath Tests
+#
+#####
+
+cached_parser_msg = {
+    'a': 1,
+    'b': [
+        {
+            'a': 1,
+            'b': 2,
+        },
+        {
+            'a': 2,
+            'b': 3,
+        },
+        {
+            'a': 2,
+            'b': 3,
+        }
+    ],
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path,match_count", [
+    ('$.a', 1),
+    ('$.b', 1),
+    ('$.b[*]', 3),
+    ('$.b[*].a', 3),
+    ('$.b[?a = 1].b', 1),
+    ('$.b[?a > 1].b', 2),
+    ('$.b[?a = 2].b', 2),
+    ('$.b[?a = 3].b', 0)  # no match, but valid syntax
+])
+def test_cached_parser__success(path, match_count):
+    matches = CachedParser.find(path, cached_parser_msg)
+    assert(len(matches) == match_count)
+
+
+@pytest.mark.unit
+def test_cached_parser__bad_path():
+    path = '$.b[this_is_nonsense].b/5^&##'  # invalid syntax
+    with pytest.raises(Exception):
+        CachedParser.find(path, cached_parser_msg)
+    assert(True)
+
+
+######
+#
 #  API TESTS
 #
 #####
 
 @pytest.mark.unit
-@pytest.mark.parametrize("call,result", [
-                        ('jobs/delete', True),
-                        ('jobs/get', {}),
-                        ('jobs/list', {}),
-                        ('healthcheck', 'healthy')
+@pytest.mark.parametrize("call,result,raises_error", [
+                        ('job/delete?id=fake', True, False),
+                        ('job/delete', None, True),
+                        ('job/get?id=fake', {}, False),
+                        ('job/get', None, True),
+                        ('job/list', [], False),
+                        ('resource/delete?id=fake', True, False),
+                        ('resource/delete', None, True),
+                        ('resource/get', None, True),
+                        ('resource/get?id=fake', {}, True),
+                        ('resource/list', [], False),
+                        ('bad_resource/list', {}, True),
+                        ('healthcheck', 'healthy', False)
 ])
-def test_api_get_calls(call, result, mocked_api):
+def test_api_get_calls(call, result, raises_error, mocked_api):
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
     pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
     auth = requests.auth.HTTPBasicAuth(user, pw)
     port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
     url = f'http://localhost:{port}/{call}'
     res = requests.get(url, auth=auth)
-    res.raise_for_status()
+    try:
+        res.raise_for_status()
+    except Exception:
+        assert(raises_error)
+        return
     try:
         val = res.json()
     except json.decoder.JSONDecodeError:
@@ -341,20 +403,75 @@ def test_api_get_calls(call, result, mocked_api):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("call,result,body", [
-                        ('jobs/add', False, {'a': 'b'}),
-                        ('jobs/update', False, {'a': 'b'}),
-                        ('jobs/add', True, {}),
-                        ('jobs/update', True, {})
+def test_api__bad_resource_type(mocked_api):
+    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
+    pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
+    auth = requests.auth.HTTPBasicAuth(user, pw)
+    port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
+    url = f'http://localhost:{port}/super_bad_resource/list'
+    res = requests.get(url, auth=auth)
+    with pytest.raises(requests.exceptions.HTTPError):
+        res.raise_for_status()
+    assert(res.status_code == 404)
+
+
+@pytest.mark.unit
+def test_api__bad_auth(mocked_api):
+    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
+    pw = 'bad_password'
+    auth = requests.auth.HTTPBasicAuth(user, pw)
+    port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
+    url = f'http://localhost:{port}/job/get?id=someid'
+    res = requests.get(url, auth=auth)
+    with pytest.raises(requests.exceptions.HTTPError):
+        res.raise_for_status()
+    assert(res.status_code == 401)
+
+
+@pytest.mark.unit
+def test_api__allowed_types(mocked_api):
+    crud = ['READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE']
+    job_only = ['PAUSE', 'RESUME', 'STATUS']
+    _allowed_types: Dict[str, List] = {
+        'job': crud + job_only,
+        'resource': crud
+    }
+    for name, allowed_ops in _allowed_types.items():
+        assert(name) in mocked_api._allowed_types.keys()
+        for op in allowed_ops:
+            assert(op in mocked_api._allowed_types[name])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("call,result,body,raises_error", [
+                        ('job/add', False, {'a': 'b'}, False),
+                        ('job/update', False, {'a': 'b'}, False),
+                        ('job/add', True, {}, False),
+                        ('job/update', True, {}, False),
+                        ('job/status', [], {'id': 'someid'}, False),
+                        ('job/pause', True, {'id': 'someid'}, False),
+                        ('job/resume', True, {'id': 'someid'}, False),
+                        ('job/validate', {'valid': False}, {'id': 'someid'}, False),
+                        ('resource/add', False, {'a': 'b'}, False),
+                        ('resource/update', False, {'a': 'b'}, False),
+                        ('resource/add', True, {}, False),
+                        ('resource/update', True, {}, False),
+                        ('resource/status', None, {'id': 'someid'}, True),  # these are now allowed
+                        ('resource/pause', None, {'id': 'someid'}, True),
+                        ('resource/resume', None, {'id': 'someid'}, True),
 ])
-def test_api_post_calls(call, result, body, mocked_api):
+def test_api_post_calls(call, result, body, raises_error, mocked_api):
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
     pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
     auth = requests.auth.HTTPBasicAuth(user, pw)
     port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
     url = f'http://localhost:{port}/{call}'
     res = requests.post(url, auth=auth, json=body)
-    res.raise_for_status()
+    try:
+        res.raise_for_status()
+    except Exception:
+        assert(raises_error)
+        return
     try:
         val = res.json()
     except json.decoder.JSONDecodeError:
@@ -369,10 +486,8 @@ def test_api_post_calls(call, result, body, mocked_api):
 #
 #####
 
-
-# real consumer
 @pytest.mark.integration
-def test_consumer_startup_shutdown(consumer):
+def test_consumer__startup_shutdown(consumer):
     call = 'healthcheck'
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
     pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
@@ -384,6 +499,256 @@ def test_consumer_startup_shutdown(consumer):
     assert(res.text == 'healthy')
 
 
+@pytest.mark.integration
+def test_consumer__job_registration(consumer: BaseConsumer):
+    redis_subscribe_delay = 0.25
+    _id = '001-01'
+    job_def = {'id': _id, 'purpose': 'counter'}
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    _job.status = JobStatus.PAUSED
+    sleep(redis_subscribe_delay)
+    # check that it stays paused
+    assert(_job.status is JobStatus.PAUSED)
+    _job.status = JobStatus.NORMAL
+    assert('purpose' in _job.config.keys()), f'missing: {_job.config}'
+    assert(_job.config['purpose'] == 'counter')
+    assert(isinstance(_job, BaseJob))
+    old_val = _job.value
+    sleep(0.5)
+    assert(_job.value > old_val)
+    new_purpose = 'some new purpose'
+    job_def['purpose'] = new_purpose
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_job.config['purpose'] == new_purpose)
+    _job._cause_exception()
+    sleep(redis_subscribe_delay)
+    assert(_job.status is JobStatus.DEAD)
+    removed = consumer.task.remove(_id, type='job')
+    assert(removed is True)
+    sleep(redis_subscribe_delay)
+    assert(_id not in consumer.job_manager.jobs.keys())
+
+
+@pytest.mark.integration
+def test_consumer__job_control(consumer: BaseConsumer):
+    redis_subscribe_delay = 0.25
+    _id = '001-02'
+    job_def = {'id': _id, 'purpose': 'counter'}
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    # check normal status
+    assert(_id in list(consumer.task.list(type='job')))
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    assert(_job.status is JobStatus.NORMAL)
+    status = consumer.status(_id)
+    assert('JobStatus.NORMAL' in status)
+    # pause job and check status
+    ok = consumer.pause(_id)
+    assert(ok)
+    sleep(redis_subscribe_delay)
+    status = consumer.status(_id)
+    assert('JobStatus.PAUSED' in status)
+    # resume and check status
+    ok = consumer.resume(_id)
+    assert(ok)
+    sleep(redis_subscribe_delay)
+    status = consumer.status(_id)
+    assert('JobStatus.NORMAL' in status)
+    statuses = consumer.status([_id, _id])
+    assert(isinstance(statuses, list))
+    for status in statuses:
+        assert(status == 'JobStatus.NORMAL')
+    # crash the job and check status
+    _job._cause_exception()
+    sleep(redis_subscribe_delay)
+    status = consumer.status(_id)
+    assert('JobStatus.DEAD' in status)
+    consumer.task.remove(_id, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_id not in consumer.job_manager.jobs.keys())
+
+
+@pytest.mark.integration
+def test_consumer__job_control_failures(consumer: BaseConsumer):
+    bad_id = 'a-bad-id'
+    ok = consumer.pause(bad_id)
+    assert(ok is False)
+    ok = consumer.resume(bad_id)
+    assert(ok is False)
+    status = consumer.status(bad_id)
+    assert(isinstance(status[0], str))
+
+
+@pytest.mark.integration
+def test_consumer__job_registration_with_resource(consumer: BaseConsumer):
+    redis_subscribe_delay = 0.25
+    res_def = {
+        'id': 'res-001',
+        'value': 1000000
+    }
+    _id = '002'
+    job_def = {
+        'id': _id,
+        'purpose': 'counter',
+        'resources': 'res-001'
+    }
+    consumer.task.add(res_def, type='resource')
+    sleep(redis_subscribe_delay)
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    assert('purpose' in _job.config.keys()), f'missing: {_job.config}'
+    assert(_job.config['purpose'] == 'counter')
+    assert(_job.resources['resource'].get('value') == res_def['value'])
+    res_def['value'] = 1000002
+    consumer.task.add(res_def, type='resource')
+    sleep(redis_subscribe_delay)
+    # check that the value was updated
+    assert(_job.resources['resource'].get('value') == res_def['value'])
+    # change the job def and make sure the resource doesn't get registered again
+    job_def['purpose'] = 'mayhem'
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    # should only be one callback here
+    assert(len(consumer.job_manager.resources['resource'][res_def['id']]) == 1)
+    removed = consumer.task.remove(str(res_def['id']), type='resource')  # explicit cast to string
+    assert(removed is True)
+    sleep(redis_subscribe_delay)
+    # job stopped because of unmet depedency
+    assert(_job.status is JobStatus.STOPPED)
+    removed = consumer.task.remove(_id, type='job')
+    assert(removed is True)
+
+
+@pytest.mark.integration
+def test_consumer__job_registration_failed_missing_resource(consumer: BaseConsumer):
+    redis_subscribe_delay = 0.05
+    _id = '003'
+    job_def = {
+        'id': _id,
+        'purpose': 'counter',
+        'resources': 'res-002'
+    }
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    # job stopped because of unmet depedency
+    assert(_job.status is JobStatus.STOPPED)
+    removed = consumer.task.remove(_id, type='job')
+    assert(removed is True)
+
+
+@pytest.mark.integration
+def test_consumer__job_registration_hanging_resource_reference(consumer: BaseConsumer):
+    redis_subscribe_delay = 0.25
+    _id = '004'
+    res_def = {
+        'id': f'res-{_id}',
+        'value': 1000000
+    }
+    job_def = {
+        'id': _id,
+        'purpose': 'counter',
+        'resources': f'res-{_id}'
+    }
+    # add job with missing resource
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    _job: BaseJob = consumer.job_manager.jobs[_id]
+    # job starts dead
+    assert(_job.status is JobStatus.STOPPED)
+    # add missing resource
+    consumer.task.add(res_def, type='resource')
+    sleep(redis_subscribe_delay)
+    # job got resource
+    assert(_job.resources['resource']['id'] == res_def['id'])
+    # remove job, leave resource
+    removed = consumer.task.remove(_id, type='job')
+    sleep(redis_subscribe_delay)
+    assert(removed is True)
+    # job is now gone
+    assert(_id not in consumer.job_manager.jobs.keys())
+    res_def = {
+        'id': f'res-{_id}',
+        'value': 1000003
+    }
+    consumer.task.add(res_def, type='resource')
+    # this shouldn't raise an error on the now missing job
+    sleep(redis_subscribe_delay)
+    # add the job again
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    _job = consumer.job_manager.jobs[_id]
+    assert(_job.status is JobStatus.NORMAL)
+    # resource still correct with new version in resurrected job
+    assert(_job.resources['resource']['id'] == res_def['id'])
+    removed = consumer.task.remove(_id, type='job')
+    removed = consumer.task.remove(str(res_def['id']), type='resource')
+
+
+@pytest.mark.integration
+def test_consumer__job_multicast_receive_resource(consumer: BaseConsumer):
+    redis_subscribe_delay = 0.25
+    # redis_subscribe_delay = 1  # lots of checking on job change
+    _id = '005'
+    res_def = {
+        'id': f'res-{_id}',
+        'value': 1000000
+    }
+    job_def1 = {
+        'id': f'{_id}-1',
+        'resources': f'res-{_id}'
+    }
+    job_def2 = {
+        'id': f'{_id}-2',
+        'resources': f'res-{_id}'
+    }
+    # add job with missing resource
+    consumer.task.add(job_def1, type='job')
+    consumer.task.add(job_def2, type='job')
+    sleep(redis_subscribe_delay)
+    job1: BaseJob = consumer.job_manager.jobs['005-1']
+    job2: BaseJob = consumer.job_manager.jobs['005-2']
+    # job starts dead
+    assert(job1.status is JobStatus.STOPPED)
+    assert(job2.status is JobStatus.STOPPED)
+    # add missing resource
+    consumer.task.add(res_def, type='resource')
+    sleep(redis_subscribe_delay)
+    # job got resource
+    assert(job1.status is JobStatus.NORMAL)
+    assert(job2.status is JobStatus.NORMAL)
+    # resource still correct with new version in resurrected job
+    removed = consumer.task.remove(str(res_def['id']), type='resource')
+    sleep(redis_subscribe_delay)
+    assert(job1.status is JobStatus.STOPPED)
+    assert(job2.status is JobStatus.STOPPED)
+    removed = consumer.task.remove('005-1', type='job')
+    removed = consumer.task.remove('005-2', type='job')
+    assert(removed is True)
+
+
+@pytest.mark.integration
+def test_consumer__job_persistence(consumer):
+    redis_subscribe_delay = 0.25
+    _id = '006'
+    job_def = {'id': _id, 'purpose': 'counter'}
+    consumer.task.add(job_def, type='job')
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    consumer.job_manager.stop()
+    consumer.job_manager._init_jobs()
+    sleep(redis_subscribe_delay)
+    assert(_id in consumer.job_manager.jobs.keys())
+    consumer.task.remove(_id, type='job')
+
+
 # mock consumer
 @pytest.mark.unit
 def test_load_schema_validate(mocked_consumer):
@@ -391,8 +756,8 @@ def test_load_schema_validate(mocked_consumer):
     permissive = c.load_schema(os.path.join(here, 'assets/schema/permissive.json'))
     strict = c.load_schema(os.path.join(here, 'assets/schema/strict.json'))
     job = {'a': 1}
-    assert(c.validate_job(job, permissive) is True)
-    assert(c.validate_job(job, strict) is False)
+    assert(c.validate(job, schema=permissive) is True)
+    assert(c.validate(job, schema=strict) is False)
 
 
 ######
@@ -400,8 +765,6 @@ def test_load_schema_validate(mocked_consumer):
 #  TASK TESTS
 #
 #####
-
-redis_subscribe_delay = 0.05  # Almost realtime...
 
 redis_messages = [
     {'id': '00001', 'a': 1},
@@ -426,14 +789,14 @@ def test_redis_io(name, args, expected, task_helper):
 
 
 @pytest.mark.integration
-def test_redis_get_methods(task_helper):
+def test_redis_get_methods(task_helper: TaskHelper):
     tasks = redis_messages
     _type = 'test'
     for t in tasks:
         assert(task_helper.add(t, _type) is True)
-        assert(task_helper.exists(t['id'], _type) is True)
+        assert(task_helper.exists(str(t['id']), _type) is True)
     for t in tasks:
-        _id = t['id']
+        _id = str(t['id'])
         from_redis = task_helper.get(_id, _type)
         assert(from_redis.get('id') == _id)
     try:
@@ -455,22 +818,23 @@ def test_redis_get_methods(task_helper):
 ])
 def test_redis_subscibe__succeed(task_helper, message, sub):
     # TaskID in redis is : _{type}:{_id}
+    redis_subscribe_delay = 0.05
     _type = 'test'
     LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
-    callable = MockCallable()
+    callable: MockCallable = MockCallable()
     task_helper.subscribe(callable.set_value, **sub)
     task_helper.add(message, _type)
     assert(task_helper.exists(message['id'], _type))
-    sleep(redis_subscribe_delay)
+    sleep(.25)
     # listen for set and check value
-    assert(message['a'] == callable.value['data']['a'])
+    assert(message['a'] == callable.value.data['a'])
     # delete the message
     task_helper.remove(message['id'], _type)
     assert(task_helper.exists(message['id'], _type) is False)
     sleep(redis_subscribe_delay)
     # get delete message
     LOG.debug(callable.value)
-    assert(callable.value['data'] is None and callable.value['type'] == 'del')
+    assert(callable.value.data is None and callable.value.type == 'del')
 
 
 @pytest.mark.integration
@@ -478,9 +842,10 @@ def test_redis_subscibe__succeed(task_helper, message, sub):
     (redis_messages[1], {'pattern': '_test:00002_01'})
 ])
 def test_redis_subscibe__fail(task_helper, message, sub):
+    redis_subscribe_delay = 0.05
     _type = 'test'
     LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
-    callable = MockCallable()
+    callable: MockCallable = MockCallable()
     task_helper.subscribe(callable.set_value, **sub)
     task_helper.add(message, _type)
     assert(task_helper.exists(message['id'], _type))
@@ -489,31 +854,41 @@ def test_redis_subscibe__fail(task_helper, message, sub):
 
 
 @pytest.mark.integration
-def test_redis_subscibe_multiple__succeed(task_helper):
+def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
     suite = [
-        (redis_messages[2], {'pattern': '_test:000*2'}, (3, None, 3), (3, 2, 3)),
-        (redis_messages[1], {'pattern': '_test:00002'}, (2, 2, 2), (2, 2, 2)),
-        (redis_messages[0], {'pattern': '_test:*'}, (2, 2, 1), (2, 2, 1)),
+        ({'id': '00022', 'a': 3}, {'pattern': '_test:000*2'}, (3, None, 3), (3, 2, 3)),
+        ({'id': '00002', 'a': 2}, {'pattern': '_test:00002'}, (2, 2, 2), (2, 2, 2)),
+        ({'id': '00001', 'a': 1}, {'pattern': '_test:*'}, (2, 2, 1), (2, 2, 1)),
     ]
-    callables = [MockCallable() for i in range(len(suite))]
+    callables: List[MockCallable] = [MockCallable() for i in range(len(suite))]
     _type = 'test'
+
+    # subscribe the listeners
     for x, (message, sub, fwd, rev) in enumerate(suite):
         task_helper.subscribe(callables[x].set_value, **sub)
 
+    # send messages in order
     for (message, sub, fwd, rev) in suite:
         task_helper.add(message, _type)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
-        assert(task_helper.exists(message['id'], _type))
-        sleep(redis_subscribe_delay)
-        res = tuple([c.value.get('data').get('a') if c.value else None for c in callables])
-        LOG.debug(json.dumps([c.value['data'] if c.value else None for c in callables], indent=2))
+        assert(task_helper.exists(str(message['id']), _type))
+        sleep(.25)
+        res = tuple([c.value.data.get('a')
+                    if (c.value and c.value.data)  # required for type checker
+                    else None
+                    for c in callables])
+        LOG.debug(json.dumps([c.value.data if c.value else None for c in callables], indent=2))
         assert(res == fwd)
 
+    # send the messages in reverse order
     for (message, sub, fwd, rev) in suite[::-1]:
         task_helper.add(message, _type)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
-        assert(task_helper.exists(message['id'], _type))
-        sleep(redis_subscribe_delay)
-        res = tuple([c.value.get('data').get('a') if c.value else None for c in callables])
-        LOG.debug(json.dumps([c.value['data'] if c.value else None for c in callables], indent=2))
+        assert(task_helper.exists(str(message['id']), _type))
+        sleep(.25)
+        res = tuple([c.value.data.get('a')
+                    if (c.value and c.value.data)  # required for type checker
+                    else None
+                    for c in callables])
+        LOG.debug(json.dumps([c.value.data if c.value else None for c in callables], indent=2))
         assert(res == rev)

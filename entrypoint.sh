@@ -55,6 +55,7 @@ case "$1" in
         $PYTEST -m unit
     ;;
 
+
     test_integration )
         echo 'Running Integration Tests...'
         $PYTEST -m integration

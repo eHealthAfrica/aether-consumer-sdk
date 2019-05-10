@@ -21,8 +21,22 @@
 from datetime import datetime
 import json
 import redis
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    NamedTuple,
+    Union
+)
 
 from .logger import LOG
+
+
+class Task(NamedTuple):
+    id: str
+    type: str
+    data: Union[Dict, None] = None  # None is not set
 
 
 class TaskHelper(object):
@@ -42,14 +56,14 @@ class TaskHelper(object):
         self._subscribe_thread = None
 
     # Generic Redis Task Functions
-    def add(self, task, type):
+    def add(self, task: Dict[str, Any], type: str) -> bool:
         key = '_{type}:{_id}'.format(
             type=type, _id=task['id']
         )
         task['modified'] = datetime.now().isoformat()
         return self.redis.set(key, json.dumps(task))
 
-    def exists(self, _id, type):
+    def exists(self, _id: str, type: str) -> bool:
         task_id = '_{type}:{_id}'.format(
             type=type,
             _id=_id
@@ -58,7 +72,7 @@ class TaskHelper(object):
             return True
         return False
 
-    def remove(self, _id, type):
+    def remove(self, _id: str, type: str) -> bool:
         task_id = '_{type}:{_id}'.format(
             type=type,
             _id=_id
@@ -68,18 +82,15 @@ class TaskHelper(object):
             return False
         return True
 
-    def get(self, _id, type):
-        task_id = '_{type}:{_id}'.format(
-            type=type,
-            _id=_id
-        )
+    def get(self, _id: str, type: str) -> Dict:
+        task_id = f'_{type}:{_id}'
         task = self.redis.get(task_id)
         if not task:
             raise ValueError('No task with id {task_id}'.format(task_id=task_id))
         return json.loads(task)
 
-    def list(self, type=None):
-        # jobs as a generator
+    def list(self, type: str = None) -> Iterable[str]:
+        # ids of matching assets as a generator
         if type:
             key_identifier = '_{type}:*'.format(type=type)
             for i in self.redis.scan_iter(key_identifier):
@@ -91,20 +102,20 @@ class TaskHelper(object):
 
     # subscription tasks
 
-    def subscribe(self, callback, pattern):
+    def subscribe(self, callback: Callable, pattern: str):
         if not self._subscribe_thread or not self._subscribe_thread._running:
             self._init_subscriber(callback, pattern)
         else:
             self._subscribe(callback, pattern)
 
-    def _init_subscriber(self, callback, pattern):
+    def _init_subscriber(self, callback: Callable, pattern: str):
         LOG.debug('Initializing Redis subscriber')
         self.pubsub = self.redis.pubsub()
         self._subscribe(callback, pattern)  # Must have a job first of thread dies
         self._subscribe_thread = self.pubsub.run_in_thread(sleep_time=0.1)
         LOG.debug('Subscriber Running')
 
-    def _subscribe(self, callback, pattern):
+    def _subscribe(self, callback: Callable, pattern: str):
         LOG.debug(f'Subscribing to {pattern}')
         keyspace = f'__keyspace@{self.redis_db}__:{pattern}'
         self.pubsub.psubscribe(**{
@@ -112,28 +123,50 @@ class TaskHelper(object):
         })
         LOG.debug(f'Added {keyspace}')
 
-    # wraps the callback function so that the message instead of the event will be returned
-    def _subscriber_wrapper(self, fn, registered_channel):
-        def wrapper(msg):
+    def _subscriber_wrapper(
+        self,
+        fn: Callable,
+        registered_channel: str
+    ) -> Callable:
+        # wraps the callback function so that the message instead of the event will be returned
+
+        def wrapper(msg) -> None:
+            LOG.debug(f'callback got message: {msg}')
             channel = msg['channel']
             # get _id from channel: __keyspace@0__:_test:00001 where _id is "_test:00001"
             _id = ':'.join(channel.split(':')[1:])
-            _type = msg['data']
-            LOG.debug(f'Channel: {channel} received {_type}; registered on: {registered_channel}')
-            res = {
-                'id': _id,
-                'type': _type,
-                'data': None
-            }
-            if _type in ('set',):
+            redis_op = msg['data']
+            LOG.debug(f'Channel: {channel} received {redis_op};'
+                      + f' registered on: {registered_channel}')
+            if redis_op in ('set',):
                 _redis_msg = self.redis.get(_id)
+                res = Task(
+                    id=_id,
+                    type=redis_op,
+                    data=json.loads(_redis_msg)
+                )
                 LOG.debug(f'ID: {_id} data: {_redis_msg}')
-                res['data'] = json.loads(_redis_msg)
-            fn(res)  # Call registered function with proper data
+            else:
+                res = Task(
+                    id=_id,
+                    type=redis_op
+                )
+            fn(res)  # On callback, hit registered function with proper data
         return wrapper
 
-    def stop(self, *args, **kwargs):
+    def _unsubscribe_all(self) -> None:
+        LOG.debug('Unsubscribing from all pub-sub topics')
+        self.pubsub.punsubscribe()
+
+    def stop(self, *args, **kwargs) -> None:
+        self._unsubscribe_all()
         if self._subscribe_thread and self._subscribe_thread._running:
             LOG.debug('Stopping Subscriber thread.')
             self._subscribe_thread._running = False
-            self._subscribe_thread.stop()
+            try:
+                self._subscribe_thread.stop()
+            except (
+                redis.exceptions.ConnectionError,
+                AttributeError
+            ):
+                LOG.error('Could not explicitly stop subscribe thread: no connection')

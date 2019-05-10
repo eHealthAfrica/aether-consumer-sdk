@@ -20,35 +20,50 @@
 
 import json
 import jsonschema
+from time import sleep
+from typing import Any, Dict, List, Union
 
 from .api import APIServer
 from .logger import LOG
 from .task import TaskHelper
+from .job import JobManager, BaseJob
+from .settings import Settings
 
 EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
 
 class BaseConsumer(object):
 
+    api: APIServer
+    consumer_settings: Settings
+    kafka_settings: Settings
+    job_manager: JobManager
+    schemas: Dict[str, Any] = {}
+    task: TaskHelper
+
     def __init__(self, CON_CONF, KAFKA_CONF):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         self.task = TaskHelper(self.consumer_settings)
-        self.jobs = {}
+        self.job_manager = JobManager(self.task, job_class=BaseJob)
         self.serve_api(self.consumer_settings)
 
     # Control API
 
     def serve_api(self, settings):
-        self.api = APIServer(self, settings)
+        self.api = APIServer(self, self.task, settings)
         self.api.serve()
 
     def stop(self, *args, **kwargs):
         LOG.info('Shutting down')
-        self.api.stop()
+        for service_name in ['api', 'task', 'job_manager']:
+            try:
+                service = getattr(self, service_name)
+                service.stop()
+            except AttributeError:
+                LOG.error(f'Consumer could not stop service {service_name}')
+        sleep(.25)
         LOG.info('Shutdown Complete')
-
-    # Job Functions
 
     def load_schema(self, path=None):
         path = path if path else self.consumer_settings.get('schema_path')
@@ -57,40 +72,27 @@ class BaseConsumer(object):
         with open(path) as f:
             return json.load(f)
 
-    def validate_job(self, job, schema=None):
-        schema = schema if schema else self.schema
+    # Job API Functions that aren't pure delegation to Redis
+
+    def pause(self, _id: str) -> bool:
+        return self.job_manager.pause_job(_id)
+
+    def resume(self, _id) -> bool:
+        return self.job_manager.resume_job(_id)
+
+    def status(self, _id: Union[str, List[str]]) -> List:
+        if isinstance(_id, str):
+            return [self.job_manager.get_job_status(_id)]
+        else:
+            return [self.job_manager.get_job_status(j_id) for j_id in _id]
+
+    # Generic API Functions that aren't pure delegation to Redis
+
+    def validate(self, job, _type=None, schema=None):
+        schema = schema if schema else self.schemas.get(_type, {})
         try:
             jsonschema.validate(job, schema)  # Throws ValidationErrors
             return True
         except jsonschema.exceptions.ValidationError as err:
             LOG.debug(err)
             return False
-
-    def add_job(self, job):
-        if not self.validate_job(job):
-            return False
-        return self.task.add(job, type='job')
-
-    def job_exists(self, _id):
-        return self.task.exists(_id, type='job')
-
-    def remove_job(self, _id):
-        return self.task.remove(_id, type='job')
-
-    def get_job(self, _id):
-        return json.loads(self.task.get(_id, type='job'))
-
-    def list_jobs(self):
-        status = {}
-        for job_id in self.task.list(type='job'):
-            if job_id in self.jobs:
-                status[job_id] = str(self.jobs.get(job_id).status)
-            else:
-                status[job_id] = 'unknown'
-        return status
-
-
-if __name__ == '__main__':
-    from .settings import CONSUMER_SETTINGS, KAFKA_SETTINGS
-    consumer = BaseConsumer(CONSUMER_SETTINGS, KAFKA_SETTINGS)
-    consumer.serve_api(consumer.consumer_settings)
