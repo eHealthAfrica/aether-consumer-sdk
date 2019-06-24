@@ -503,11 +503,12 @@ def test_consumer__startup_shutdown(consumer):
 def test_consumer__job_registration(consumer: BaseConsumer):
     redis_subscribe_delay = 0.25
     _id = '001-01'
+    job_id = f'{TENANT}:{_id}'
     job_def = {'id': _id, 'purpose': 'counter'}
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
-    assert(_id in consumer.job_manager.jobs.keys())
-    _job: BaseJob = consumer.job_manager.jobs[_id]
+    assert(job_id in consumer.job_manager.jobs.keys())
+    _job: BaseJob = consumer.job_manager.jobs[job_id]
     _job.status = JobStatus.PAUSED
     sleep(redis_subscribe_delay)
     # check that it stays paused
@@ -521,53 +522,54 @@ def test_consumer__job_registration(consumer: BaseConsumer):
     assert(_job.value > old_val)
     new_purpose = 'some new purpose'
     job_def['purpose'] = new_purpose
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
     assert(_job.config['purpose'] == new_purpose)
     _job._cause_exception()
     sleep(redis_subscribe_delay)
     assert(_job.status is JobStatus.DEAD)
-    removed = consumer.task.remove(_id, type='job')
+    removed = consumer.task.remove(_id, type='job', tenant=TENANT)
     assert(removed is True)
     sleep(redis_subscribe_delay)
-    assert(_id not in consumer.job_manager.jobs.keys())
+    assert(job_id not in consumer.job_manager.jobs.keys())
 
 
 @pytest.mark.integration
 def test_consumer__job_control(consumer: BaseConsumer):
     redis_subscribe_delay = 0.25
     _id = '001-02'
+    job_id = f'{TENANT}:{_id}'
     job_def = {'id': _id, 'purpose': 'counter'}
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
     # check normal status
-    assert(_id in list(consumer.task.list(type='job')))
-    _job: BaseJob = consumer.job_manager.jobs[_id]
+    assert(_id in list(consumer.task.list(type='job', tenant=TENANT)))
+    _job: BaseJob = consumer.job_manager.jobs[job_id]
     assert(_job.status is JobStatus.NORMAL)
-    status = consumer.status(_id)
+    status = consumer.status(_id, TENANT)
     assert('JobStatus.NORMAL' in status)
     # pause job and check status
-    ok = consumer.pause(_id)
+    ok = consumer.pause(_id, TENANT)
     assert(ok)
     sleep(redis_subscribe_delay)
-    status = consumer.status(_id)
+    status = consumer.status(_id, TENANT)
     assert('JobStatus.PAUSED' in status)
     # resume and check status
-    ok = consumer.resume(_id)
+    ok = consumer.resume(_id, TENANT)
     assert(ok)
     sleep(redis_subscribe_delay)
-    status = consumer.status(_id)
+    status = consumer.status(_id, TENANT)
     assert('JobStatus.NORMAL' in status)
-    statuses = consumer.status([_id, _id])
+    statuses = consumer.status([_id, _id], TENANT)
     assert(isinstance(statuses, list))
     for status in statuses:
         assert(status == 'JobStatus.NORMAL')
     # crash the job and check status
     _job._cause_exception()
     sleep(redis_subscribe_delay)
-    status = consumer.status(_id)
+    status = consumer.status(_id, TENANT)
     assert('JobStatus.DEAD' in status)
-    consumer.task.remove(_id, type='job')
+    consumer.task.remove(_id, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
     assert(_id not in consumer.job_manager.jobs.keys())
 
@@ -575,11 +577,11 @@ def test_consumer__job_control(consumer: BaseConsumer):
 @pytest.mark.integration
 def test_consumer__job_control_failures(consumer: BaseConsumer):
     bad_id = 'a-bad-id'
-    ok = consumer.pause(bad_id)
+    ok = consumer.pause(bad_id, TENANT)
     assert(ok is False)
-    ok = consumer.resume(bad_id)
+    ok = consumer.resume(bad_id, TENANT)
     assert(ok is False)
-    status = consumer.status(bad_id)
+    status = consumer.status(bad_id, TENANT)
     assert(isinstance(status[0], str))
 
 
@@ -591,37 +593,40 @@ def test_consumer__job_registration_with_resource(consumer: BaseConsumer):
         'value': 1000000
     }
     _id = '002'
+    job_id = f'{TENANT}:{_id}'
     job_def = {
         'id': _id,
         'purpose': 'counter',
         'resources': 'res-001'
     }
-    consumer.task.add(res_def, type='resource')
+    consumer.task.add(res_def, type='resource', tenant=TENANT)
     sleep(redis_subscribe_delay)
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
-    assert(_id in consumer.job_manager.jobs.keys())
-    _job: BaseJob = consumer.job_manager.jobs[_id]
+    assert(job_id in list(consumer.job_manager.jobs.keys()))
+    _job: BaseJob = consumer.job_manager.jobs[job_id]
     assert('purpose' in _job.config.keys()), f'missing: {_job.config}'
     assert(_job.config['purpose'] == 'counter')
     assert(_job.resources['resource'].get('value') == res_def['value'])
     res_def['value'] = 1000002
-    consumer.task.add(res_def, type='resource')
+    consumer.task.add(res_def, type='resource', tenant=TENANT)
     sleep(redis_subscribe_delay)
     # check that the value was updated
     assert(_job.resources['resource'].get('value') == res_def['value'])
     # change the job def and make sure the resource doesn't get registered again
     job_def['purpose'] = 'mayhem'
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
     # should only be one callback here
     assert(len(consumer.job_manager.resources['resource'][res_def['id']]) == 1)
-    removed = consumer.task.remove(str(res_def['id']), type='resource')  # explicit cast to string
+    removed = consumer.task.remove(
+        str(res_def['id']), type='resource', tenant=TENANT
+    )  # explicit cast to string
     assert(removed is True)
     sleep(redis_subscribe_delay)
     # job stopped because of unmet depedency
     assert(_job.status is JobStatus.STOPPED)
-    removed = consumer.task.remove(_id, type='job')
+    removed = consumer.task.remove(_id, type='job', tenant=TENANT)
     assert(removed is True)
 
 
@@ -629,18 +634,19 @@ def test_consumer__job_registration_with_resource(consumer: BaseConsumer):
 def test_consumer__job_registration_failed_missing_resource(consumer: BaseConsumer):
     redis_subscribe_delay = 0.05
     _id = '003'
+    job_id = f'{TENANT}:{_id}'
     job_def = {
         'id': _id,
         'purpose': 'counter',
         'resources': 'res-002'
     }
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
-    assert(_id in consumer.job_manager.jobs.keys())
-    _job: BaseJob = consumer.job_manager.jobs[_id]
+    assert(job_id in consumer.job_manager.jobs.keys())
+    _job: BaseJob = consumer.job_manager.jobs[job_id]
     # job stopped because of unmet depedency
     assert(_job.status is JobStatus.STOPPED)
-    removed = consumer.task.remove(_id, type='job')
+    removed = consumer.task.remove(_id, type='job', tenant=TENANT)
     assert(removed is True)
 
 
@@ -648,6 +654,7 @@ def test_consumer__job_registration_failed_missing_resource(consumer: BaseConsum
 def test_consumer__job_registration_hanging_resource_reference(consumer: BaseConsumer):
     redis_subscribe_delay = 0.25
     _id = '004'
+    job_id = f'{TENANT}:{_id}'
     res_def = {
         'id': f'res-{_id}',
         'value': 1000000
@@ -658,38 +665,38 @@ def test_consumer__job_registration_hanging_resource_reference(consumer: BaseCon
         'resources': f'res-{_id}'
     }
     # add job with missing resource
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
-    _job: BaseJob = consumer.job_manager.jobs[_id]
+    _job: BaseJob = consumer.job_manager.jobs[job_id]
     # job starts dead
     assert(_job.status is JobStatus.STOPPED)
     # add missing resource
-    consumer.task.add(res_def, type='resource')
+    consumer.task.add(res_def, type='resource', tenant=TENANT)
     sleep(redis_subscribe_delay)
     # job got resource
     assert(_job.resources['resource']['id'] == res_def['id'])
     # remove job, leave resource
-    removed = consumer.task.remove(_id, type='job')
+    removed = consumer.task.remove(_id, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
     assert(removed is True)
     # job is now gone
-    assert(_id not in consumer.job_manager.jobs.keys())
+    assert(job_id not in consumer.job_manager.jobs.keys())
     res_def = {
         'id': f'res-{_id}',
         'value': 1000003
     }
-    consumer.task.add(res_def, type='resource')
+    consumer.task.add(res_def, type='resource', tenant=TENANT)
     # this shouldn't raise an error on the now missing job
     sleep(redis_subscribe_delay)
     # add the job again
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
-    _job = consumer.job_manager.jobs[_id]
+    _job = consumer.job_manager.jobs[job_id]
     assert(_job.status is JobStatus.NORMAL)
     # resource still correct with new version in resurrected job
     assert(_job.resources['resource']['id'] == res_def['id'])
-    removed = consumer.task.remove(_id, type='job')
-    removed = consumer.task.remove(str(res_def['id']), type='resource')
+    removed = consumer.task.remove(_id, type='job', tenant=TENANT)
+    removed = consumer.task.remove(str(res_def['id']), type='resource', tenant=TENANT)
 
 
 @pytest.mark.integration
@@ -710,27 +717,27 @@ def test_consumer__job_multicast_receive_resource(consumer: BaseConsumer):
         'resources': f'res-{_id}'
     }
     # add job with missing resource
-    consumer.task.add(job_def1, type='job')
-    consumer.task.add(job_def2, type='job')
+    consumer.task.add(job_def1, type='job', tenant=TENANT)
+    consumer.task.add(job_def2, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
-    job1: BaseJob = consumer.job_manager.jobs['005-1']
-    job2: BaseJob = consumer.job_manager.jobs['005-2']
+    job1: BaseJob = consumer.job_manager.jobs[f'{TENANT}:005-1']
+    job2: BaseJob = consumer.job_manager.jobs[f'{TENANT}:005-2']
     # job starts dead
     assert(job1.status is JobStatus.STOPPED)
     assert(job2.status is JobStatus.STOPPED)
     # add missing resource
-    consumer.task.add(res_def, type='resource')
+    consumer.task.add(res_def, type='resource', tenant=TENANT)
     sleep(redis_subscribe_delay)
     # job got resource
     assert(job1.status is JobStatus.NORMAL)
     assert(job2.status is JobStatus.NORMAL)
     # resource still correct with new version in resurrected job
-    removed = consumer.task.remove(str(res_def['id']), type='resource')
+    removed = consumer.task.remove(str(res_def['id']), type='resource', tenant=TENANT)
     sleep(redis_subscribe_delay)
     assert(job1.status is JobStatus.STOPPED)
     assert(job2.status is JobStatus.STOPPED)
-    removed = consumer.task.remove('005-1', type='job')
-    removed = consumer.task.remove('005-2', type='job')
+    removed = consumer.task.remove('005-1', type='job', tenant=TENANT)
+    removed = consumer.task.remove('005-2', type='job', tenant=TENANT)
     assert(removed is True)
 
 
@@ -738,15 +745,16 @@ def test_consumer__job_multicast_receive_resource(consumer: BaseConsumer):
 def test_consumer__job_persistence(consumer):
     redis_subscribe_delay = 0.25
     _id = '006'
+    job_id = f'{TENANT}:{_id}'
     job_def = {'id': _id, 'purpose': 'counter'}
-    consumer.task.add(job_def, type='job')
+    consumer.task.add(job_def, type='job', tenant=TENANT)
     sleep(redis_subscribe_delay)
-    assert(_id in consumer.job_manager.jobs.keys())
+    assert(job_id in list(consumer.job_manager.jobs.keys()))
     consumer.job_manager.stop()
     consumer.job_manager._init_jobs()
     sleep(redis_subscribe_delay)
-    assert(_id in consumer.job_manager.jobs.keys())
-    consumer.task.remove(_id, type='job')
+    assert(job_id in consumer.job_manager.jobs.keys())
+    consumer.task.remove(_id, type='job', tenant=TENANT)
 
 
 # mock consumer
@@ -784,7 +792,9 @@ redis_messages = [
 ])
 def test_redis_io(name, args, expected, task_helper):
     fn = getattr(task_helper, name)
-    res = fn(*args)
+    _args = args[:]
+    _args.append(TENANT)
+    res = fn(*_args)
     assert(res == expected)
 
 
@@ -793,44 +803,46 @@ def test_redis_get_methods(task_helper: TaskHelper):
     tasks = redis_messages
     _type = 'test'
     for t in tasks:
-        assert(task_helper.add(t, _type) is True)
-        assert(task_helper.exists(str(t['id']), _type) is True)
+        assert(task_helper.add(t, _type, tenant=TENANT) is True)
+        assert(task_helper.exists(str(t['id']), _type, tenant=TENANT) is True)
     for t in tasks:
         _id = str(t['id'])
-        from_redis = task_helper.get(_id, _type)
+        from_redis = task_helper.get(_id, _type, tenant=TENANT)
         assert(from_redis.get('id') == _id)
     try:
-        task_helper.get('fake_id', _type)
+        task_helper.get('fake_id', _type, tenant=TENANT)
     except ValueError:
         pass
     else:
         assert(False)
-    redis_ids = list(task_helper.list(_type))
+    redis_ids = list(task_helper.list(_type, tenant=TENANT))  # {id}
     assert(all([t['id'] in redis_ids for t in tasks]))
-    redis_ids = list(task_helper.list())
-    assert(all([t['id'] in redis_ids for t in tasks]))
+    redis_ids = list(task_helper.list(tenant=TENANT))  # {tenant}:{id}
+    LOG.debug(redis_ids)
+    for t in tasks:
+        assert(any([t['id'] in key for key in redis_ids]))
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize("message,sub", [
-    (redis_messages[0], {'pattern': '_test:*'}),
-    (redis_messages[1], {'pattern': '_test:00002'})
+    (redis_messages[0], {'pattern': '*_test:*'}),
+    (redis_messages[1], {'pattern': '*_test:*:00002'})
 ])
 def test_redis_subscibe__succeed(task_helper, message, sub):
-    # TaskID in redis is : _{type}:{_id}
+    # TaskID in redis is : _{type}:{tenant}:{_id}
     redis_subscribe_delay = 0.05
     _type = 'test'
-    LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
+    LOG.debug(f'Msg ID is : {TENANT}:_{_type}:{message["id"]}')
     callable: MockCallable = MockCallable()
     task_helper.subscribe(callable.set_value, **sub)
-    task_helper.add(message, _type)
-    assert(task_helper.exists(message['id'], _type))
+    task_helper.add(message, _type, tenant=TENANT)
+    assert(task_helper.exists(message['id'], _type, tenant=TENANT))
     sleep(.25)
     # listen for set and check value
     assert(message['a'] == callable.value.data['a'])
     # delete the message
-    task_helper.remove(message['id'], _type)
-    assert(task_helper.exists(message['id'], _type) is False)
+    task_helper.remove(message['id'], _type, tenant=TENANT)
+    assert(task_helper.exists(message['id'], _type, tenant=TENANT) is False)
     sleep(redis_subscribe_delay)
     # get delete message
     LOG.debug(callable.value)
@@ -839,7 +851,7 @@ def test_redis_subscibe__succeed(task_helper, message, sub):
 
 @pytest.mark.integration
 @pytest.mark.parametrize("message,sub", [
-    (redis_messages[1], {'pattern': '_test:00002_01'})
+    (redis_messages[1], {'pattern': '*_test:*:00002_01'})
 ])
 def test_redis_subscibe__fail(task_helper, message, sub):
     redis_subscribe_delay = 0.05
@@ -847,8 +859,8 @@ def test_redis_subscibe__fail(task_helper, message, sub):
     LOG.debug(f'Msg ID is : _{_type}:{message["id"]}')
     callable: MockCallable = MockCallable()
     task_helper.subscribe(callable.set_value, **sub)
-    task_helper.add(message, _type)
-    assert(task_helper.exists(message['id'], _type))
+    task_helper.add(message, _type, tenant=TENANT)
+    assert(task_helper.exists(message['id'], _type, tenant=TENANT))
     sleep(redis_subscribe_delay)
     assert(callable.value is None)
 
@@ -856,9 +868,9 @@ def test_redis_subscibe__fail(task_helper, message, sub):
 @pytest.mark.integration
 def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
     suite = [
-        ({'id': '00022', 'a': 3}, {'pattern': '_test:000*2'}, (3, None, 3), (3, 2, 3)),
-        ({'id': '00002', 'a': 2}, {'pattern': '_test:00002'}, (2, 2, 2), (2, 2, 2)),
-        ({'id': '00001', 'a': 1}, {'pattern': '_test:*'}, (2, 2, 1), (2, 2, 1)),
+        ({'id': '00022', 'a': 3}, {'pattern': '*_test:*:000*2'}, (3, None, 3), (3, 2, 3)),
+        ({'id': '00002', 'a': 2}, {'pattern': '*_test:*:00002'}, (2, 2, 2), (2, 2, 2)),
+        ({'id': '00001', 'a': 1}, {'pattern': '*_test:*'}, (2, 2, 1), (2, 2, 1)),
     ]
     callables: List[MockCallable] = [MockCallable() for i in range(len(suite))]
     _type = 'test'
@@ -869,9 +881,9 @@ def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
 
     # send messages in order
     for (message, sub, fwd, rev) in suite:
-        task_helper.add(message, _type)
+        task_helper.add(message, _type, tenant=TENANT)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
-        assert(task_helper.exists(str(message['id']), _type))
+        assert(task_helper.exists(str(message['id']), _type, tenant=TENANT))
         sleep(.25)
         res = tuple([c.value.data.get('a')
                     if (c.value and c.value.data)  # required for type checker
@@ -882,9 +894,9 @@ def test_redis_subscibe_multiple__succeed(task_helper: TaskHelper):
 
     # send the messages in reverse order
     for (message, sub, fwd, rev) in suite[::-1]:
-        task_helper.add(message, _type)
+        task_helper.add(message, _type, tenant=TENANT)
         LOG.debug(f'ADD {message["id"]} : {message["a"]}')
-        assert(task_helper.exists(str(message['id']), _type))
+        assert(task_helper.exists(str(message['id']), _type, tenant=TENANT))
         sleep(.25)
         res = tuple([c.value.data.get('a')
                     if (c.value and c.value.data)  # required for type checker

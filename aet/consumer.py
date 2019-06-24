@@ -74,17 +74,17 @@ class BaseConsumer(object):
 
     # Job API Functions that aren't pure delegation to Redis
 
-    def pause(self, _id: str) -> bool:
-        return self.job_manager.pause_job(_id)
+    def pause(self, _id: str, tenant) -> bool:
+        return self.job_manager.pause_job(_id, tenant)
 
-    def resume(self, _id) -> bool:
-        return self.job_manager.resume_job(_id)
+    def resume(self, _id, tenant) -> bool:
+        return self.job_manager.resume_job(_id, tenant)
 
-    def status(self, _id: Union[str, List[str]]) -> List:
+    def status(self, _id: Union[str, List[str]], tenant) -> List:
         if isinstance(_id, str):
-            return [self.job_manager.get_job_status(_id)]
+            return [self.job_manager.get_job_status(_id, tenant)]
         else:
-            return [self.job_manager.get_job_status(j_id) for j_id in _id]
+            return [self.job_manager.get_job_status(j_id, tenant) for j_id in _id]
 
     # Generic API Functions that aren't pure delegation to Redis
 

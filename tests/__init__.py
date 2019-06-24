@@ -53,6 +53,8 @@ kafka_connection_retry_wait = 6
 # needs to be even an if > 100 a multiple of 100.
 topic_size = 500
 
+TENANT = settings.CONSUMER_CONFIG.get('DEFAULT_TENANT')
+
 
 class MockCallable(object):
     value: Optional[Task] = None
@@ -64,22 +66,22 @@ class MockCallable(object):
 
 class MockTaskHelper(object):
 
-    def __init__(self):
+    def __init__(self):  # mock_method
         pass
 
-    def add(self, task, type):
+    def add(self, task, type, tenant):  # mock_method
         return True
 
-    def exists(self, _id, type):
+    def exists(self, _id, type, tenant):  # mock_method
         return True
 
-    def remove(self, _id, type):
+    def remove(self, _id, type, tenant):  # mock_method
         return True
 
-    def get(self, _id, type):
+    def get(self, _id, type, tenant):  # mock_method
         return '{}'
 
-    def list(self, type=None):
+    def list(self, type=None, tenant=None):  # mock_method
         return []
 
 

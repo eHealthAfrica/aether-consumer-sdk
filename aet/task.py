@@ -20,6 +20,7 @@
 
 from datetime import datetime
 import json
+from operator import itemgetter
 import redis
 from typing import (
     Any,
@@ -31,10 +32,14 @@ from typing import (
 )
 
 from .logger import LOG
+from .settings import CONSUMER_CONFIG
+
+DEFAULT_TENANT = CONSUMER_CONFIG.get('DEFAULT_TENANT', 'no-tenant')
 
 
 class Task(NamedTuple):
     id: str
+    tenant: str
     type: str
     data: Union[Dict, None] = None  # None is not set
 
@@ -56,50 +61,90 @@ class TaskHelper(object):
         self._subscribe_thread = None
 
     # Generic Redis Task Functions
-    def add(self, task: Dict[str, Any], type: str) -> bool:
-        key = '_{type}:{_id}'.format(
-            type=type, _id=task['id']
+    def add(
+        self,
+        task: Dict[str, Any],
+        type: str,
+        tenant: str
+    ) -> bool:
+        key = '_{type}:{tenant}:{_id}'.format(
+            type=type,
+            _id=task['id'],
+            tenant=tenant
         )
         task['modified'] = datetime.now().isoformat()
         return self.redis.set(key, json.dumps(task))
 
-    def exists(self, _id: str, type: str) -> bool:
-        task_id = '_{type}:{_id}'.format(
+    def exists(
+        self,
+        _id: str,
+        type: str,
+        tenant: str
+    ) -> bool:
+        task_id = '_{type}:{tenant}:{_id}'.format(
             type=type,
-            _id=_id
+            _id=_id,
+            tenant=tenant
         )
         if self.redis.exists(task_id):
             return True
         return False
 
-    def remove(self, _id: str, type: str) -> bool:
-        task_id = '_{type}:{_id}'.format(
+    def remove(
+        self,
+        _id: str,
+        type: str,
+        tenant: str
+    ) -> bool:
+        task_id = '_{type}:{tenant}:{_id}'.format(
             type=type,
-            _id=_id
+            _id=_id,
+            tenant=tenant
         )
         res = self.redis.delete(task_id)
         if not res:
             return False
         return True
 
-    def get(self, _id: str, type: str) -> Dict:
-        task_id = f'_{type}:{_id}'
+    def get(
+        self,
+        _id: str,
+        type: str,
+        tenant: str
+    ) -> Dict:
+        task_id = f'_{type}:{tenant}:{_id}'
         task = self.redis.get(task_id)
         if not task:
             raise ValueError('No task with id {task_id}'.format(task_id=task_id))
         return json.loads(task)
 
-    def list(self, type: str = None) -> Iterable[str]:
+    def list(
+        self,
+        type: str = None,
+        tenant: str = DEFAULT_TENANT
+    ) -> Iterable[str]:
         # ids of matching assets as a generator
-        if type:
-            key_identifier = '_{type}:*'.format(type=type)
+        if type and not tenant:  # internal option used by jobs manager
+            key_identifier = '_{type}:{tenant}:*'.format(
+                type=type,
+                tenant='*'
+            )
             for i in self.redis.scan_iter(key_identifier):
-                yield str(i).split(key_identifier[:-1])[1]
-        else:
-            key_identifier = '*'
+                yield ':'.join(str(i).split(':')[-2:])  # _id
+        elif type:  # normal method accessible by API
+            key_identifier = '_{type}:{tenant}:*'.format(
+                type=type,
+                tenant=tenant
+            )
             for i in self.redis.scan_iter(key_identifier):
-                yield str(i).split(':')[-1]
-
+                yield str(i).split(':')[-1]  # _id
+        else:  # unused edge case
+            key_identifier = f'*:{tenant}:*'
+            for i in self.redis.scan_iter(key_identifier):
+                yield ':'.join(
+                    itemgetter(-3, -1)
+                    (str(i).split(':'))
+                )  # _type:_id
     # subscription tasks
 
     def subscribe(self, callback: Callable, pattern: str):
@@ -133,15 +178,18 @@ class TaskHelper(object):
         def wrapper(msg) -> None:
             LOG.debug(f'callback got message: {msg}')
             channel = msg['channel']
-            # get _id from channel: __keyspace@0__:_test:00001 where _id is "_test:00001"
-            _id = ':'.join(channel.split(':')[1:])
+            # get _id, tenant from channel: __keyspace@0__:_test:_tenant:00001
+            # where id = 00001
+            keyspace, _type, tenant, _id = channel.split(':')
+            redis_id = ':'.join([_type, tenant, _id])
             redis_op = msg['data']
             LOG.debug(f'Channel: {channel} received {redis_op};'
                       + f' registered on: {registered_channel}')
             if redis_op in ('set',):
-                _redis_msg = self.redis.get(_id)
+                _redis_msg = self.redis.get(redis_id)
                 res = Task(
                     id=_id,
+                    tenant=tenant,
                     type=redis_op,
                     data=json.loads(_redis_msg)
                 )
@@ -149,6 +197,7 @@ class TaskHelper(object):
             else:
                 res = Task(
                     id=_id,
+                    tenant=tenant,
                     type=redis_op
                 )
             fn(res)  # On callback, hit registered function with proper data

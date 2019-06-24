@@ -27,11 +27,15 @@ from flask import Flask, Request, Response, request, jsonify
 from webtest.http import StopableWSGIServer
 
 from .logger import LOG
+from .settings import CONSUMER_CONFIG
 
 if TYPE_CHECKING:  # pragma: no cover
     from .consumer import BaseConsumer
     from .task import TaskHelper
     from .settings import Settings
+
+TENANCY_HEADER = CONSUMER_CONFIG.get('TENANCY_HEADER')
+DEFAULT_TENANT = CONSUMER_CONFIG.get('DEFAULT_TENANT', 'no-tenant')
 
 
 class APIServer(object):
@@ -195,10 +199,22 @@ class APIServer(object):
     def requires_auth(f):  # TODO # Can't get this typed properly
         @wraps(f)
         def decorated(self, *args, **kwargs):
-            LOG.error([args, kwargs])
-            auth = request.authorization
-            if not auth or not self.check_auth(auth.username, auth.password):
-                return self.request_authentication()
+            if not TENANCY_HEADER:  # if we're running tenanted then we don't use basic auth
+                auth = request.authorization
+                if not auth or not self.check_auth(auth.username, auth.password):
+                    return self.request_authentication()
+            return f(self, *args, **kwargs)
+        return decorated
+
+    def check_tenant(f):
+        @wraps(f)
+        def decorated(self, *args, **kwargs):
+            if not TENANCY_HEADER:
+                return f(self, *args, **kwargs)
+            tenant = request.headers.get('TENANCY_HEADER')
+            if not tenant:
+                return Response(f'Missing tenant header: {TENANCY_HEADER}', 400)
+            kwargs['tenant'] = tenant
             return f(self, *args, **kwargs)
         return decorated
 
@@ -216,54 +232,62 @@ class APIServer(object):
 
     @restrict_types('STATUS')
     @requires_auth
-    def status(self, _type=None, operation=None):
+    @check_tenant
+    def status(self, _type=None, operation=None, tenant=DEFAULT_TENANT):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.status(_id))
+            return jsonify(self.consumer.status(_id, tenant))
 
     @restrict_types('PAUSE')
     @requires_auth
-    def pause(self, _type=None, operation=None):
+    @check_tenant
+    def pause(self, _type=None, operation=None, tenant=DEFAULT_TENANT):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.pause(_id))
+            return jsonify(self.consumer.pause(_id, tenant))
 
     @restrict_types('RESUME')
     @requires_auth
-    def resume(self, _type=None, operation=None):
+    @check_tenant
+    def resume(self, _type=None, operation=None, tenant=DEFAULT_TENANT):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.resume(_id))
+            return jsonify(self.consumer.resume(_id, tenant))
 
     # Generic CRUD
 
     @restrict_types('CREATE')
     @requires_auth
-    def add(self, _type=None, operation=None):
-        return self.handle_crud(request, operation, _type)
+    @check_tenant
+    def add(self, _type=None, operation=None, tenant=DEFAULT_TENANT):
+        return self.handle_crud(request, operation, _type, tenant)
 
     @restrict_types('DELETE')
     @requires_auth
-    def remove(self, _type=None, operation=None):
-        return self.handle_crud(request, operation, _type)
+    @check_tenant
+    def remove(self, _type=None, operation=None, tenant=DEFAULT_TENANT):
+        return self.handle_crud(request, operation, _type, tenant)
 
     @restrict_types('READ')
     @requires_auth
-    def get(self, _type=None, operation=None):
-        return self.handle_crud(request, operation, _type)
+    @check_tenant
+    def get(self, _type=None, operation=None, tenant=DEFAULT_TENANT):
+        return self.handle_crud(request, operation, _type, tenant)
 
     # List of Assets of _type
 
     @restrict_types('LIST')
     @requires_auth
-    def _list(self, _type=None, operation=None):
-        return self.handle_crud(request, operation, _type)
+    @check_tenant
+    def _list(self, _type=None, operation=None, tenant=DEFAULT_TENANT):
+        return self.handle_crud(request, operation, _type, tenant)
 
     # Validation of asset of _type
 
     @restrict_types('VALIDATE')
     @requires_auth
-    def validate(self, _type=None, operation=None):
+    @check_tenant
+    def validate(self, _type=None, operation=None, tenant=DEFAULT_TENANT):
         res = self.consumer.validate(request.get_json(), _type)
         with self.app.app_context():
             return jsonify({'valid': res})
@@ -274,24 +298,30 @@ class APIServer(object):
     #
     #######
 
-    def handle_crud(self, request: Request, operation: str, _type: str):
+    def handle_crud(
+        self,
+        request: Request,
+        operation: str,
+        _type: str,
+        tenant: str
+    ):
         self.app.logger.debug(request)
         _id = request.args.get('id', None)
         response: Union[str, List, Dict, bool]  # anything compat with jsonify
         if operation == 'CREATE':
             if self.consumer.validate(request.get_json(), _type=_type):
-                response = self.task.add(request.get_json(), type=_type)
+                response = self.task.add(request.get_json(), _type, tenant)
             else:
                 response = False
         if operation == 'DELETE':
             if not _id:
                 return Response('Argument "id" is required', 400)
-            response = self.task.remove(_id, type=_type)
+            response = self.task.remove(_id, _type, tenant)
         if operation == 'READ':
             if not _id:
                 return Response('Argument "id" is required', 400)
-            response = json.loads(str(self.task.get(_id, type=_type)))
+            response = json.loads(str(self.task.get(_id, _type, tenant)))
         if operation == 'LIST':
-            response = list(self.task.list(type=_type))
+            response = list(self.task.list(_type, tenant))
         with self.app.app_context():
             return jsonify(response)

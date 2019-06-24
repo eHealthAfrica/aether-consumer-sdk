@@ -174,11 +174,13 @@ class JobManager(object):
     # Job Initialization
 
     def _init_jobs(self):
-        jobs = self.task.list(type=type(self)._job_redis_type)
-        for _id in jobs:
-            job: Dict = self.task.get(_id, type=type(self)._job_redis_type)
-            LOG.debug(f'init job: {job}')
-            self._init_job(job)
+        # get all jobs of _type by not specifying tenant
+        jobs = self.task.list(type=type(self)._job_redis_type, tenant=None)
+        for _id_string in jobs:
+            tenant, _id = _id_string.split(':')
+            job: Dict = self.task.get(_id, type=type(self)._job_redis_type, tenant=tenant)
+            LOG.debug(f'init job: {_id} for tenant: {tenant}')
+            self._init_job(job, tenant)
         self.listen_for_job_change()
         self.listen_for_resource_change()
 
@@ -186,52 +188,56 @@ class JobManager(object):
 
     def _init_job(
         self,
-        job: Dict[str, Any]
+        job: Dict[str, Any],
+        tenant: str
     ) -> None:
         # Attempt to start or update a job
         LOG.debug(f'initalizing job: {job}')
-        _id = job['id']
+        _id = f'''{tenant}:{job['id']}'''
         if _id in self.jobs.keys():
             LOG.debug(f'Job {_id} exists, updating')
-            self._configure_job(job)
+            self._configure_job(job, tenant)
         else:
-            self._start_job(job)
+            self._start_job(job, tenant)
 
     def _start_job(
         self,
-        job: Dict[str, Any]
+        job: Dict[str, Any],
+        tenant: str,
     ) -> None:
         # Start a new job
         LOG.debug(f'starting job: {job}')
-        _id = job['id']
+        _id = f'''{tenant}:{job['id']}'''
         self.jobs[_id] = self.job_class(_id)
-        self._configure_job(job)
+        self._configure_job(job, tenant)
 
     def _configure_job(
         self,
-        job: Dict[str, Any]
+        job: Dict[str, Any],
+        tenant: str
     ):
         # Configure an existing job
-        _id = job['id']
+        _id = f'''{tenant}:{job['id']}'''
         LOG.debug(f'Configuring job {_id}')
         try:
-            self._configure_job_resources(job)
+            self._configure_job_resources(job, tenant)
             LOG.debug(f'Resources configured for {_id}')
         except (
             AttributeError,
             ValueError
         ) as aer:
             LOG.error(f'Job {_id} missing required resource, stopping: {aer}')
-            self._stop_job(_id)
+            self._stop_job(_id, tenant)
             return
         self.jobs[_id].set_config(job)
 
     def _configure_job_resources(
         self,
-        job: Dict[str, Any]
+        job: Dict[str, Any],
+        tenant: str
     ) -> None:
         # Configure resources for a job
-        job_id = job['id']
+        job_id = f'''{tenant}:{job['id']}'''
         type_paths = [(k, r['job_path']) for k, r in type(self)._resources.items()]
         LOG.debug(f'Job: {job_id} triggered checks on paths {type_paths}')
         added_resources = []
@@ -245,27 +251,30 @@ class JobManager(object):
             added = self._register_resource_listener(
                 _type,
                 resource_id,
-                self.jobs[job_id]
+                self.jobs[job_id],
+                tenant
             )
             if added:
                 added_resources.append([_type, resource_id])
         for _type, resource_id in added_resources:
-            self._init_resource(_type, resource_id, self.jobs[job_id])
+            self._init_resource(_type, resource_id, self.jobs[job_id], tenant)
 
-    def _stop_job(self, _id: str) -> None:
-        LOG.debug(f'stopping job: {_id}')
-        if _id in self.jobs:
-            self.jobs[_id].stop()
+    def _stop_job(self, job_id: str, tenant: str) -> None:
+        LOG.debug(f'stopping job: {job_id}')
+        if job_id in self.jobs:
+            self.jobs[job_id].stop()
 
-    def _remove_job(self, _id: str) -> None:
+    def _remove_job(self, job_id: str, tenant: str) -> None:
+        _id = f'{tenant}:{job_id}'
         LOG.debug(f'removing job: {_id}')
-        self._stop_job(_id)
+        self._stop_job(_id, tenant)
         self._remove_resource_listeners(_id)
         del self.jobs[_id]
 
     # Direct API Driven job control / visibility functions
 
-    def pause_job(self, _id: str) -> bool:
+    def pause_job(self, job_id: str, tenant: str) -> bool:
+        _id = f'{tenant}:{job_id}'
         LOG.debug(f'pausing job: {_id}')
         if _id in self.jobs:
             self.jobs[_id].status = JobStatus.PAUSED
@@ -274,7 +283,8 @@ class JobManager(object):
             LOG.debug(f'Could not find job {_id} to pause.')
             return False
 
-    def resume_job(self, _id: str) -> bool:
+    def resume_job(self, job_id: str, tenant: str) -> bool:
+        _id = f'{tenant}:{job_id}'
         LOG.debug(f'pausing job: {_id}')
         if _id in self.jobs:
             self.jobs[_id].status = JobStatus.NORMAL
@@ -283,7 +293,8 @@ class JobManager(object):
             LOG.debug(f'Could not find job {_id} to pause.')
             return False
 
-    def get_job_status(self, _id: str) -> Union[Dict[str, Any], str]:
+    def get_job_status(self, job_id: str, tenant: str) -> Union[Dict[str, Any], str]:
+        _id = f'{tenant}:{job_id}'
         if _id in self.jobs:
             return self.jobs[_id].get_status()
         else:
@@ -316,7 +327,8 @@ class JobManager(object):
         self,
         _type: str,
         resource_id: str,
-        job: BaseJob
+        job: BaseJob,
+        tenant: str
     ) -> bool:
 
         # register callbacks for job resource listeners
@@ -336,11 +348,14 @@ class JobManager(object):
         return True
 
     # remove all resource listeners for shutdown
-    def _remove_resource_listeners(self, job_id: str) -> None:
+    def _remove_resource_listeners(
+        self,
+        _id: str  # ID is in format of jobs dict: {tenant}:{job_id}
+    ) -> None:
         # remove all resource listeners for a job with id -> job_id
         for _type in self.resources.keys():
             for resource_id in self.resources[_type].keys():
-                jobs = [j for j in self.resources[_type][resource_id] if j._id != job_id]
+                jobs = [j for j in self.resources[_type][resource_id] if j._id != _id]
                 self.resources[_type][resource_id] = jobs
         return
 
@@ -349,10 +364,11 @@ class JobManager(object):
         self,
         _type: str,
         resource_id: str,
-        job: BaseJob
+        job: BaseJob,
+        tenant: str
     ) -> None:
         LOG.debug(f'Initializing resource for job {job._id} -> {_type}:{resource_id}')
-        res = self.task.get(_id=resource_id, type=_type)
+        res = self.task.get(_id=resource_id, type=_type, tenant=tenant)
         job.set_resource(_type, res)
         return
 
@@ -365,8 +381,7 @@ class JobManager(object):
 
         # find out which jobs this pertains to
         LOG.debug(f'Consumer resource update : "{_type}": {msg}')
-        resource_id = msg.id.split(
-            type(self)._resources[_type]['redis_name'])[1]
+        resource_id = msg.id
         # find jobs this pertains to
         jobs = self.resources.get(_type, {}).get(resource_id, {})
         if not jobs:
@@ -384,24 +399,10 @@ class JobManager(object):
 
     # generic job change listener then dispatched to the proper job / creates new job
     def on_job_change(self, msg: Task) -> None:
-        LOG.debug(f'Consumer received cmd: "{msg.type}" on job: {msg.id}')
+        LOG.debug(f'Consumer received cmd: "{msg.type}" on tenant: {msg.tenant}| job: {msg.id}')
         if msg.type == 'set':
             job = msg.data
             if job:  # type checker gets mad without the check here
-                self._init_job(job)
+                self._init_job(job, msg.tenant)
         elif msg.type == 'del':
-            _id = self._get_id(msg)  # just the id
-            self._remove_job(_id)
-
-    #############
-    #
-    # Utility
-    #
-    #############
-
-    def _get_id(
-        self,
-        msg: Task,
-    ) -> str:
-        # from a signal
-        return msg.id.split(type(self)._job_redis_name)[1]
+            self._remove_job(msg.id, msg.tenant)
