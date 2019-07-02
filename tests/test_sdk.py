@@ -382,14 +382,10 @@ def test_cached_parser__bad_path():
                         ('bad_resource/list', {}, True),
                         ('healthcheck', 'healthy', False)
 ])
-def test_api_get_calls(call, result, raises_error, tenant_api):
-    # config = deepcopy(settings.CONSUMER_CONFIG)
+def test_api_get_calls__mt(call, result, raises_error, tenant_api):
     tenant = 'test-consumer-name'
     port = 9099
     tenancy_header = 'my-tenant-header'
-    # user = config.get('ADMIN_USER')
-    # pw = config.get('ADMIN_PW')
-    # auth = requests.auth.HTTPBasicAuth(user, pw)
     url = f'http://localhost:{port}/{call}'
     headers = {tenancy_header: tenant}
     res = requests.get(url, headers=headers)
@@ -410,11 +406,7 @@ def test_api_get_calls(call, result, raises_error, tenant_api):
 def test_api__missing_tenant(tenant_api):
     url = f'http://localhost:9099/job/list'
     res = requests.get(url)
-    try:
-        res.raise_for_status()
-    except Exception:
-        assert(True)
-        return
+    assert(res.status_code == 400)
 
 
 @pytest.mark.unit
