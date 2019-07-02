@@ -24,7 +24,7 @@ import json
 import os
 import pytest
 from time import sleep
-from typing import ClassVar, List, Iterable, Optional  # noqa
+from typing import ClassVar, Callable, List, Iterable, Optional  # noqa
 from unittest import mock
 
 from kafka import KafkaProducer
@@ -389,6 +389,28 @@ def mocked_api(mocked_consumer) -> Iterable[APIServer]:
     yield api
     # teardown
     LOG.debug('Fixture api complete, stopping.')
+    api.stop()
+    sleep(.5)
+
+# API Assets
+@pytest.mark.unit
+@pytest.fixture(scope="module")
+def tenant_api(mocked_consumer) -> Iterable[APIServer]:
+    config = {}
+    tenant = 'test-consumer-name'
+    port = 9099
+    config['CONSUMER_NAME'] = tenant
+    config['EXPOSE_PORT'] = port
+    tenancy_header = 'my-tenant-header'
+    config['TENANCY_HEADER'] = tenancy_header
+    LOG.debug(config)
+    api = APIServer(
+        mocked_consumer,
+        mocked_consumer.task,
+        config
+    )
+    api.serve()
+    yield api
     api.stop()
     sleep(.5)
 

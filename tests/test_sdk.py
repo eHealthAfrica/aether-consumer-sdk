@@ -382,13 +382,17 @@ def test_cached_parser__bad_path():
                         ('bad_resource/list', {}, True),
                         ('healthcheck', 'healthy', False)
 ])
-def test_api_get_calls(call, result, raises_error, mocked_api):
-    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
-    pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
-    auth = requests.auth.HTTPBasicAuth(user, pw)
-    port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
+def test_api_get_calls(call, result, raises_error, tenant_api):
+    # config = deepcopy(settings.CONSUMER_CONFIG)
+    tenant = 'test-consumer-name'
+    port = 9099
+    tenancy_header = 'my-tenant-header'
+    # user = config.get('ADMIN_USER')
+    # pw = config.get('ADMIN_PW')
+    # auth = requests.auth.HTTPBasicAuth(user, pw)
     url = f'http://localhost:{port}/{call}'
-    res = requests.get(url, auth=auth)
+    headers = {tenancy_header: tenant}
+    res = requests.get(url, headers=headers)
     try:
         res.raise_for_status()
     except Exception:
@@ -400,6 +404,17 @@ def test_api_get_calls(call, result, raises_error, mocked_api):
         val = res.text
     finally:
         assert(val == result)
+
+
+@pytest.mark.unit
+def test_api__missing_tenant(tenant_api):
+    url = f'http://localhost:9099/job/list'
+    res = requests.get(url)
+    try:
+        res.raise_for_status()
+    except Exception:
+        assert(True)
+        return
 
 
 @pytest.mark.unit

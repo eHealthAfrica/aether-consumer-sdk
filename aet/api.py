@@ -34,7 +34,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from .task import TaskHelper
     from .settings import Settings
 
-TENANCY_HEADER = CONSUMER_CONFIG.get('TENANCY_HEADER')
 DEFAULT_TENANT = CONSUMER_CONFIG.get('DEFAULT_TENANT', 'no-tenant')
 
 
@@ -86,6 +85,7 @@ class APIServer(object):
         server_port = int(self.settings.get('EXPOSE_PORT', 9013))
         self.admin_name = self.settings.get('ADMIN_USER', 'admin')
         self.admin_password = self.settings.get('ADMIN_PW', 'password')
+        self.app.logger.debug(f'Serving on: {server_ip}:{server_port}')
         self.http = StopableWSGIServer.create(
             self.app.wsgi_app,
             port=server_port,
@@ -199,7 +199,8 @@ class APIServer(object):
     def requires_auth(f):  # TODO # Can't get this typed properly
         @wraps(f)
         def decorated(self, *args, **kwargs):
-            if not TENANCY_HEADER:  # if we're running tenanted then we don't use basic auth
+            # if we're running tenanted then we don't use basic auth
+            if not self.settings.get('TENANCY_HEADER'):
                 auth = request.authorization
                 if not auth or not self.check_auth(auth.username, auth.password):
                     return self.request_authentication()
@@ -209,11 +210,12 @@ class APIServer(object):
     def check_tenant(f):
         @wraps(f)
         def decorated(self, *args, **kwargs):
-            if not TENANCY_HEADER:
+            tenancy_header = self.settings.get('TENANCY_HEADER')
+            if not tenancy_header:
                 return f(self, *args, **kwargs)
-            tenant = request.headers.get('TENANCY_HEADER')
+            tenant = request.headers.get(tenancy_header)
             if not tenant:
-                return Response(f'Missing tenant header: {TENANCY_HEADER}', 400)
+                return Response(f'Missing tenant header: {tenancy_header}', 400)
             kwargs['tenant'] = tenant
             return f(self, *args, **kwargs)
         return decorated
