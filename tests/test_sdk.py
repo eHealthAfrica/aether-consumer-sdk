@@ -75,25 +75,27 @@ def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args
     assert(len(messages) ==
            topic_size), "Should have generated the right number of messages"
     iter_consumer = KafkaConsumer(**default_consumer_args)
-    iter_consumer.subscribe(topic)
-    iter_consumer.seek_to_beginning()
+    while not iter_consumer.list_topics():
+        print('waiting for kafka to populate')
+        sleep(5)
+    iter_consumer.subscribe([topic])
+    # iter_consumer.seek_to_beginning()
     # more than a few hundres is too large to grab in one pass when not serialized
     for x in range(int(3 * topic_size / 500)):
-        messages = iter_consumer.poll_and_deserialize(timeout_ms=10000, max_records=1000)
+        messages = iter_consumer.poll_and_deserialize(timeout=3, num_messages=1000)
+        for msg in messages:
+            print('message!')
+            if is_json:
+                _id = msg.value.get('id')
+            else:
+                _id = msg.value
+            try:
+                # remove found records from our pick list
+                _ids.remove(_id)
+            except ValueError:
+                # record may be in another batch
+                pass
         # read messages and check masking
-        for partition, packages in messages.items():
-            for package in packages:
-                for msg in package.get("messages"):
-                    if is_json:
-                        _id = msg.get('id')
-                    else:
-                        _id = msg
-                    try:
-                        # remove found records from our pick list
-                        _ids.remove(_id)
-                    except ValueError:
-                        # record may be in another batch
-                        pass
         if len(_ids) == 0:
             break
     iter_consumer.close()
@@ -122,16 +124,14 @@ def test_masking_boolean_pass(default_consumer_args,
     consumer_kwargs["aether_masking_schema_emit_level"] = emit_level
     # get messages for this emit level
     iter_consumer = KafkaConsumer(**consumer_kwargs)
-    iter_consumer.subscribe(topic)
+    iter_consumer.subscribe([topic])
     iter_consumer.seek_to_beginning()
-    messages = iter_consumer.poll_and_deserialize(timeout_ms=10000, max_records=1000)
+    messages = iter_consumer.poll_and_deserialize(timeout=5, num_messages=1000)
     iter_consumer.close()
     # read messages and check masking
-    for partition, packages in messages.items():
-        for package in packages:
-            for msg in package.get("messages"):
-                assert(len(msg.keys()) ==
-                       unmasked_fields), "%s fields should be unmasked" % unmasked_fields
+    for msg in messages:
+        assert(len(msg.value.keys()) ==
+               unmasked_fields), "%s fields should be unmasked" % unmasked_fields
 
 
 @pytest.mark.integration
@@ -160,16 +160,13 @@ def test_masking_category_pass(default_consumer_args,
     consumer_kwargs["aether_masking_schema_levels"] = masking_taxonomy
     # get messages for this emit level
     iter_consumer = KafkaConsumer(**consumer_kwargs)
-    iter_consumer.subscribe(topic)
-    iter_consumer.seek_to_beginning()
-    messages = iter_consumer.poll_and_deserialize(timeout_ms=10000, max_records=1000)
+    iter_consumer.subscribe([topic])
+    messages = iter_consumer.poll_and_deserialize(timeout=5, num_messages=1000)
     iter_consumer.close()
     # read messages and check masking
-    for partition, packages in messages.items():
-        for package in packages:
-            for msg in package.get("messages"):
-                assert(len(msg.keys()) ==
-                       unmasked_fields), "%s fields should be unmasked" % unmasked_fields
+    for msg in messages:
+        assert(len(msg.value.keys()) ==
+               unmasked_fields), "%s fields should be unmasked" % unmasked_fields
 
 
 @pytest.mark.integration
@@ -195,16 +192,14 @@ def test_publishing_boolean_pass(default_consumer_args,
     consumer_kwargs["aether_emit_flag_values"] = publish_on
     # get messages for this emit level
     iter_consumer = KafkaConsumer(**consumer_kwargs)
-    iter_consumer.subscribe(topic)
+    iter_consumer.subscribe([topic])
     iter_consumer.seek_to_beginning()
-    messages = iter_consumer.poll_and_deserialize(timeout_ms=10000, max_records=1000)
+    messages = iter_consumer.poll_and_deserialize(timeout=10, num_messages=1000)
     iter_consumer.close()
     # read messages and check masking
     count = 0
-    for partition, packages in messages.items():
-        for package in packages:
-            for msg in package.get("messages"):
-                count += 1
+    for msg in messages:
+        count += 1
     assert(count == expected_count), "unexpected # of messages published"
 
 
@@ -226,15 +221,13 @@ def test_publishing_enum_pass(default_consumer_args,
     consumer_kwargs["aether_emit_flag_values"] = publish_on
     # get messages for this emit level
     iter_consumer = KafkaConsumer(**consumer_kwargs)
-    iter_consumer.subscribe(topic)
+    iter_consumer.subscribe([topic])
     iter_consumer.seek_to_beginning()
-    messages = iter_consumer.poll_and_deserialize(timeout_ms=10000, max_records=1000)
+    messages = iter_consumer.poll_and_deserialize(timeout=5, num_messages=1000)
     iter_consumer.close()
     # read messages and check masking
-    for partition, packages in messages.items():
-        for package in packages:
-            for msg in package.get("messages"):
-                assert(msg.get("publish") in expected_values)
+    for msg in messages:
+        assert(msg.value.get("publish") in expected_values)
 
 
 @pytest.mark.unit

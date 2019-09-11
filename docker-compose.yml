@@ -17,7 +17,7 @@ services:
       - tests/test_environment.env
 
   zookeeper-test:
-    image: confluentinc/cp-zookeeper:5.1.1
+    image: confluentinc/cp-zookeeper:5.2.1
     environment:
       ZOOKEEPER_CLIENT_PORT: 32181
       ZOOKEEPER_TICK_TIME: 2000
@@ -25,7 +25,7 @@ services:
       - moby:127.0.0.1
 
   kafka-test:
-    image: confluentinc/cp-kafka:5.1.1
+    image: confluentinc/cp-kafka:5.2.1
     links:
       - zookeeper-test
     environment:

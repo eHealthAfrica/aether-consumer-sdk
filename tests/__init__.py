@@ -26,6 +26,7 @@ import pytest
 from time import sleep
 from typing import ClassVar, List, Iterable, Optional  # noqa
 from unittest import mock
+from uuid import uuid4
 
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
@@ -225,12 +226,9 @@ def default_consumer_args():
         "aether_emit_flag_values": [True, False],
         "aether_masking_schema_levels": [0, 1, 2, 3, 4, 5],
         "aether_masking_schema_emit_level": 0,
-        "bootstrap_servers": kafka_server,
-        "heartbeat_interval_ms": 2500,
-        "session_timeout_ms": 18000,
-        "request_timeout_ms": 20000,
-        "auto_offset_reset": 'latest',
-        "consumer_timeout_ms": 17000
+        "group.id": str(uuid4()),
+        "bootstrap.servers": kafka_server,
+        "auto.offset.reset": 'earliest'
     })
 
 
@@ -336,7 +334,7 @@ def offline_consumer():
         for k, v in pairs.items():
             self.config[k] = v
     # Mock up a usable KafkaConsumer that doesn't use Kafka...
-    with mock.patch('aet.kafka.VanillaConsumer.__init__') as MKafka:
+    with mock.patch('aet.kafka.KafkaConsumer.__init__') as MKafka:
         MKafka.return_value = None  # we need to ignore the call to super in __init__
         consumer = KafkaConsumer()
     consumer._set_config = set_config.__get__(consumer)
