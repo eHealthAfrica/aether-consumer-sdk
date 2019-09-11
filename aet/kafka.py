@@ -19,10 +19,13 @@
 # under the License.
 
 import ast
+from dataclasses import dataclass
 import io
 import json
+from typing import List
 
-from kafka import KafkaConsumer as VanillaConsumer
+
+import confluent_kafka
 from spavro.datafile import DataFileReader
 from spavro.io import DatumReader
 from spavro.schema import AvroException
@@ -30,7 +33,18 @@ from spavro.schema import AvroException
 from jsonpath_ng import parse
 
 
-class KafkaConsumer(VanillaConsumer):
+@dataclass
+class Message:
+    key: str = None
+    value: str = None
+    offset: int = None
+    topic: str = None
+    partition: int = None
+    schema: str = None
+    headers: List = None
+
+
+class KafkaConsumer(confluent_kafka.Consumer):
 
     # Adding these key/ value pairs to those handled by vanilla KafkaConsumer
     ADDITIONAL_CONFIG = {
@@ -42,12 +56,16 @@ class KafkaConsumer(VanillaConsumer):
         "aether_emit_flag_values": [True]
     }
 
-    def __init__(self, *topics, **configs):
-        # Add to inherited DEFAULT_CONFIG
-        for k, v in KafkaConsumer.ADDITIONAL_CONFIG.items():
-            KafkaConsumer.DEFAULT_CONFIG[k] = v
+    def __init__(self, **kwargs):
+        self.config = {}
         # Items not in either default or additional config raise KafkaConfigurationError on super
-        super(KafkaConsumer, self).__init__(*topics, **configs)
+        for k, v in KafkaConsumer.ADDITIONAL_CONFIG.items():
+            if k in kwargs:
+                self.config[k] = kwargs[k]
+                del kwargs[k]
+            else:
+                self.config[k] = v
+        super(KafkaConsumer, self).__init__(**kwargs)
 
     def get_approval_filter(self):
         # If {aether_emit_flag_required} is True, each message is checked for a passing value.
@@ -118,62 +136,79 @@ class KafkaConsumer(VanillaConsumer):
         else:
             return mask(msg)
 
-    def poll_and_deserialize(self, timeout_ms=0, max_records=None):
+    def poll_and_deserialize(self, num_messages=1, timeout=1):
         # None of the methods in the Python Kafka library deserialize messages, which is a
         # required step in order to filter fields which may be masked, or to only publish
         # messages which meet a certain condition. For this reason, we extend the poll() method
         # from the Kafka library to handle deserialzation in a fast and reliable way. We also
         # implement masking and field filtering in this method, based on the consumer configuration
         # passed in __init__ and the schema of each message.
-        result = {}
+
         last_schema = None
         mask = None
         approval_filter = None
-        partitioned_messages = self.poll(timeout_ms, max_records)
-        if partitioned_messages:
-            for part, packages in partitioned_messages.items():
-                # we don't worry about the partitions for now
-                partition_result = []
-                # a package can contain multiple messages serialzed with the same schema
-                for package in packages:
-                    obj = io.BytesIO()
-                    obj.write(package.value)
-                    try:
-                        reader = DataFileReader(obj, DatumReader())
-                        (
-                            package_result,
-                            last_schema,
-                            mask,
-                            approval_filter
-                        ) = \
-                            self._reader_to_messages(
-                                reader,
-                                last_schema,
-                                mask,
-                                approval_filter
-                        )
-                        obj.close()  # don't forget to close your open IO object.
-                        if package_result.get("schema") or len(package_result["messages"]) > 0:
-                            partition_result.append(package_result)
-                    except AvroException:
-                        reader = None
-                        (
-                            package_result,
-                            last_schema,
-                            mask,
-                            approval_filter
-                        ) = (
-                            self._unpack_bytes_message(obj),
+        result = []
+        incoming = self.consume(num_messages=num_messages, timeout=timeout)
+        for m in incoming:
+            key = m.key()
+            partition = m.partition()
+            offset = m.offset()
+            headers = m.headers()
+            topic = m.topic()
+            obj = io.BytesIO()
+            obj.write(m.value())
+            try:
+                reader = DataFileReader(obj, DatumReader())
+                (
+                    package_result,
+                    last_schema,
+                    mask,
+                    approval_filter
+                ) = \
+                    self._reader_to_messages(
+                        reader,
+                        last_schema,
+                        mask,
+                        approval_filter
+                )
+                obj.close()  # don't forget to close your open IO object.
+                if package_result.get("schema") or len(package_result["messages"]) > 0:
+                    schema = package_result.get("schema")
+                    for message_body in package_result['messages']:
+                        result.append(Message(
+                            key,
+                            message_body,
+                            offset,
+                            topic,
+                            partition,
+                            schema,
+                            headers
+                        ))
+            except AvroException:
+                reader = None
+                (
+                    package_result,
+                    last_schema,
+                    mask,
+                    approval_filter
+                ) = (
+                    self._unpack_bytes_message(obj),
+                    None,
+                    None,
+                    None
+                )
+                obj.close()  # don't forget to close your open IO object.
+                if len(package_result["messages"]) > 0:
+                    for message_body in package_result['messages']:
+                        result.append(Message(
+                            key,
+                            message_body,
+                            offset,
+                            topic,
+                            partition,
                             None,
-                            None,
-                            None
-                        )
-                        obj.close()  # don't forget to close your open IO object.
-                        if len(package_result["messages"]) > 0:
-                            partition_result.append(package_result)
-                if len(partition_result) > 0:
-                    name = "topic:%s-partition:%s" % (part.topic, part.partition)
-                    result[name] = partition_result
+                            headers
+                        ))
         return result
 
     def _reader_to_messages(self, reader, last_schema, mask, approval_filter):
@@ -225,5 +260,8 @@ class KafkaConsumer(VanillaConsumer):
     def seek_to_beginning(self):
         # We override this method to allow for seeking before any messages have been consumed
         # as poll consumes a message. Since we're going to change offset, we don't care.
-        self.poll(timeout_ms=100, max_records=1)
-        super(KafkaConsumer, self).seek_to_beginning()
+        self.poll(timeout=1)
+        partitions = self.assignment()
+        for p in partitions:
+            p.offset = confluent_kafka.OFFSET_BEGINNING
+            super(KafkaConsumer, self).assign(p)
