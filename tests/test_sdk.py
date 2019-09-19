@@ -307,6 +307,45 @@ def test_msk_msg_custom_map(offline_consumer,
 
 ######
 #
+#  Resource Tests
+#
+#####
+
+@pytest.mark.unit
+def test_resource__basic_validate_pass():
+    assert(TestResource._validate_pretty(TestResourceDef1))
+
+
+@pytest.mark.unit
+def test_resource__basic_validate_fail():
+    assert(TestResource._validate({}) is not True)
+
+
+@pytest.mark.unit
+def test_resource__basic_validate_fail_verbose():
+    res = TestResource._validate_pretty({})
+    assert(res['valid'] != True)
+    assert(len(res['validation_errors']) > 0)
+
+
+@pytest.mark.unit
+def test_resource__basic_method():
+    res = TestResource(TestResourceDef1)
+    assert(res.upper('username') == 'USER')
+
+
+@pytest.mark.unit
+def test_resource__basic_describe_static():
+    assert(len(TestResource._describe_static()) == 2)
+
+
+@pytest.mark.unit
+def test_resource__basic_describe_public():
+    assert(len(TestResource._describe()) == 2)
+
+
+######
+#
 #  Jsonpath Tests
 #
 #####

@@ -41,6 +41,7 @@ from aet.consumer import BaseConsumer
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.logger import LOG
+from aet.resource import BaseResource
 from aet.task import TaskHelper, Task
 
 from .assets.schemas import test_schemas
@@ -53,6 +54,69 @@ kafka_connection_retry_wait = 6
 # increasing topic_size may cause poll to be unable to get all the messages in one call.
 # needs to be even an if > 100 a multiple of 100.
 topic_size = 500
+
+
+TestResourceDef1 = {'username': 'user', 'password': 'pw'}
+
+
+class TestResource(BaseResource):
+
+    public_actions = [
+        'upper',
+        'null'
+    ]
+
+    schema = '''
+    {
+      "definitions": {},
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "http://example.com/root.json",
+      "type": "object",
+      "title": "The Root Schema",
+      "required": [
+        "username",
+        "password"
+      ],
+      "properties": {
+        "username": {
+          "$id": "#/properties/username",
+          "type": "string",
+          "title": "The Username Schema",
+          "default": "",
+          "examples": [
+            "shawn"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "password": {
+          "$id": "#/properties/password",
+          "type": "string",
+          "title": "The Password Schema",
+          "default": "",
+          "examples": [
+            "password"
+          ],
+          "pattern": "^(.*)$"
+        }
+      }
+    }
+    '''
+
+    def upper(self, key: str):
+        '''
+            Returns the uppercase version of the requested key
+            OR None if the key is not found
+        '''
+        try:
+            return self.definition.get(key).upper()
+        except Exception:
+            return None
+
+    def null(self, key: str):
+        '''
+            Returns None, always
+        '''
+        return None
 
 
 class MockCallable(object):
