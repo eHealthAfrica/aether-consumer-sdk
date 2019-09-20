@@ -30,7 +30,9 @@ from typing import (
     Union
 )
 
-from .logger import LOG
+from .logger import get_logger
+
+LOG = get_logger('Task')
 
 
 class Task(NamedTuple):

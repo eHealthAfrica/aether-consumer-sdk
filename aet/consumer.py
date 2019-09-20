@@ -24,10 +24,12 @@ from time import sleep
 from typing import Any, Dict, List, Union
 
 from .api import APIServer
-from .logger import LOG
+from .logger import get_logger
 from .task import TaskHelper
 from .job import JobManager, BaseJob
 from .settings import Settings
+
+LOG = get_logger('Consumer')
 
 EXCLUDED_TOPICS = ['__confluent.support.metrics']
 

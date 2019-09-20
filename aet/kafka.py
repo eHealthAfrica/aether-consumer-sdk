@@ -32,6 +32,10 @@ from spavro.schema import AvroException
 
 from jsonpath_ng import parse
 
+from .logger import get_logger
+
+LOG = get_logger('Kafka')
+
 
 @dataclass
 class Message:

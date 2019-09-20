@@ -40,11 +40,13 @@ from aet.api import APIServer
 from aet.consumer import BaseConsumer
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
-from aet.logger import LOG
+from aet.logger import get_logger
 from aet.resource import BaseResource
 from aet.task import TaskHelper, Task
 
 from .assets.schemas import test_schemas
+
+LOG = get_logger('Test')
 
 here = os.path.dirname(os.path.realpath(__file__))
 

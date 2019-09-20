@@ -22,11 +22,13 @@
 import logging
 from .settings import CONSUMER_CONFIG
 
-LOG = logging.getLogger(__name__)
 
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter(
-    '%(asctime)s [Consumer] %(levelname)-8s %(message)s'))
-LOG.addHandler(handler)
-level = logging.getLevelName(CONSUMER_CONFIG.get('log_level', 'DEBUG'))
-LOG.setLevel(level)
+def get_logger(name):
+    logger = logging.getLogger(name)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        f'%(asctime)s [AET][{name}] %(levelname)-8s %(message)s'))
+    logger.addHandler(handler)
+    level = logging.getLevelName(CONSUMER_CONFIG.get('log_level', 'DEBUG'))
+    logger.setLevel(level)
+    return logger

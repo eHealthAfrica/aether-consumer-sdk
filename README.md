@@ -46,13 +46,13 @@ The SDK includes a basic data model consisting of two types.
 
 ### Data Type Definition
 
-Each implementation will need something different from `Resource` a `Job`. As such, we need to define a schema for what a valid `Job` and `Resource` should consist of. The schema itself is a JSONSchema that descibes the valid structure for the type.
+Each implementation will need something different from `Resource` a `Job`. As such, we need to define a schema for what a valid `Job` and `Resource` should consist of. The schema itself is a JSONSchema that describes the valid structure for the type.
 
-The schemas for each type should be placed in `aet.consumer.BaseConsumer[schemas] (:Dict[str, Any])`. Generally, it's best to subclass BaseConsumer, and override any methods you'd like, including the `schemas` property. Every type registered in `aet.api.APIServer[_allowed_types] (:ClassVar[Dict[str, List]])` needs to have a schema registered in the subclassed Consumer. In this way, you can add more than one resource type, or other things you want persited, and provide an API to CRUD and validate those resources. Unless you really need it, it's recommended that you stick to `Resource` and `Job`.
+The schemas for each type should be placed in `aet.consumer.BaseConsumer[schemas] (:Dict[str, Any])`. Generally, it's best to subclass BaseConsumer, and override any methods you'd like, including the `schemas` property. Every type registered in `aet.api.APIServer[_allowed_types] (:ClassVar[Dict[str, List]])` needs to have a schema registered in the subclassed Consumer. In this way, you can add more than one resource type, or other things you want persisted, and provide an API to CRUD and validate those resources. Unless you really need it, it's recommended that you stick to `Resource` and `Job`.
 
 ### API
 
-The API operates on the types defined in the previous section. All registered types get the following behaviours by default:
+The API operates on the types defined in the previous section. All registered types get the following behaviors by default:
 `'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE', 'SCHEMA'`
 In addition, `Jobs` and only Jobs get the methods:
 `'PAUSE', 'RESUME', 'STATUS'`
@@ -85,12 +85,12 @@ For example, to get the `job` with `id = 0001` you send a GET request to:
 
 ### Implementing Consumer Behavior
 
-Once you have schemas defined, you'll need to implement the behavior that makes the consumer special. The BaseJob at `aet.job.BaseJob` and BaseConsumer at `aet.consumer.BaseConsumer` should be subclassed.
+Once you have schemas defined, you'll need to implement the behavior that makes the consumer special. The BaseJob at `aet.job.BaseJob` and BaseConsumer at `aet.consumer.BaseConsumer` should be sub-classed.
 
 
 #### `aet.api.APIServer`
 
-This is the main application entrypoint. It needs, among other things, an instance of `BaseConsumer` or its subclass for initialization. Starting the APIServer runs everything until `stop()` is called.
+This is the main application entry point. It needs, among other things, an instance of `BaseConsumer` or its subclass for initialization. Starting the APIServer runs everything until `stop()` is called.
 
 #### `aet.consumer.BaseConsumer`:
 
@@ -104,7 +104,7 @@ Here is where you'll need to implement your own handling logic. To understand wh
 
   - `_get_messages(self, config, resources) -> List[message]`: Implement getting messages from Kafka based on the configuration and watched resources and returning them as a list depending on the requirements of your consumer.
   - `_handle_messages(self, config, resources, messages) -> None`: Implement what should happen to the messages that were fetched from Kafka in `_get_messages`
-  - `_handle_new_settings() -> None` Implement logic for what happens when one of the `Resources` that this `Job` depends on changes. In most cases, this is nothing since the resouce is passed to the `_handle_messages` method, but you may need to, for example, initalize a new connection.
+  - `_handle_new_settings() -> None` Implement logic for what happens when one of the `Resources` that this `Job` depends on changes. In most cases, this is nothing since the resource is passed to the `_handle_messages` method, but you may need to, for example, initialize a new connection.
 
 
 # KafkaConsumer Extension Features

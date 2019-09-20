@@ -26,7 +26,9 @@ from typing import Any, Dict, List
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 
-from .logger import LOG
+from .logger import get_logger
+
+LOG = get_logger('Resource')
 
 
 class BaseResource(object):

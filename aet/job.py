@@ -25,9 +25,11 @@ from time import sleep
 from threading import Thread
 from typing import Any, Callable, ClassVar, Dict, Union
 
-from .logger import LOG
+from .logger import get_logger
 from .jsonpath import CachedParser
 from .task import Task, TaskHelper
+
+LOG = get_logger('Job')
 
 
 class JobStatus(enum.Enum):
@@ -35,7 +37,7 @@ class JobStatus(enum.Enum):
     DEAD = 1
     PAUSED = 2  # Paused
     RECONFIGURE = 3  # Job has a new configuration
-    NORMAL = 4  # Topic is operating normally
+    NORMAL = 4  # Job is operating normally
 
 
 class BaseJob(object):
@@ -239,7 +241,7 @@ class JobManager(object):
             matches = CachedParser.find(path, job)
             if not matches:
                 LOG.debug(f'Job: {job_id} has no external resources for path {path}')
-                continue  # no dependant resource of this type
+                continue  # no dependent resource of this type
             resource_id = [m.value for m in matches][0]
             LOG.debug(f'Job : {job_id} depends on resource {_type}:{resource_id}')
             added = self._register_resource_listener(
@@ -356,7 +358,7 @@ class JobManager(object):
         job.set_resource(_type, res)
         return
 
-    # generic handler called on change of any resource. Dispatched to dependant jobs
+    # generic handler called on change of any resource. Dispatched to dependent jobs
     def on_resource_change(
         self,
         _type: str,
