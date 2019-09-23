@@ -28,12 +28,11 @@ from uuid import uuid4
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 
+from aether.python.redis.task import TaskHelper
+
 from .logger import get_logger
 
 LOG = get_logger('Resource')
-
-if TYPE_CHECKING:  # pragma: no cover
-    from aether.python.redis.task import TaskHelper
 
 
 def lock(f):
@@ -129,8 +128,9 @@ class InstanceManager(object):
     rules: Dict[str, Any]
     task: TaskHelper
 
-    def init(self, rules, TaskHelper):
+    def init(self, rules, helper):
         self.rules = rules
+        self.task = helper
 
     def get(self, _id, _type):
         '''

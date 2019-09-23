@@ -296,6 +296,9 @@ class JobManager(object):
 
     def dispatch_resource_call(self, tenant=None, _type=None, operation=None, request=None):
         pass
+        # _cls = type(self).get(_type, {}).get('class')
+        # if operation in _cls.static_actions:
+        #     fn = getattr(_cls, operation)
 
     #############
     #

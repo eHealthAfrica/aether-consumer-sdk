@@ -28,6 +28,7 @@ from aether.python.redis.task import TaskHelper
 from .api import APIServer
 from .logger import get_logger
 from .job import JobManager, BaseJob
+from .resource import BaseResource
 from .settings import Settings
 
 LOG = get_logger('Consumer')
