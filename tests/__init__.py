@@ -28,6 +28,8 @@ from typing import ClassVar, List, Iterable, Optional  # noqa
 from unittest import mock
 from uuid import uuid4
 
+from aether.python.redis.task import Task, TaskHelper
+
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
 
@@ -42,7 +44,7 @@ from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.logger import get_logger
 from aet.resource import BaseResource
-from aet.task import TaskHelper, Task
+
 
 from .assets.schemas import test_schemas
 

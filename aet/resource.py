@@ -21,7 +21,9 @@
 
 from inspect import signature
 import json
-from typing import Any, Dict, List
+import threading
+from typing import Any, Dict, List, TYPE_CHECKING
+from uuid import uuid4
 
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
@@ -30,9 +32,22 @@ from .logger import get_logger
 
 LOG = get_logger('Resource')
 
+if TYPE_CHECKING:  # pragma: no cover
+    from aether.python.redis.task import TaskHelper
+
+
+def lock(f):
+    def wrapper(*args, **kwargs):
+        args[0].lock.acquire()
+        res = f(*args, **kwargs)
+        args[0].lock.release()
+        return res
+
 
 class BaseResource(object):
+    __id: str
     definition: Any  # the implementation of this resource
+    # requires no instance to execute
     static_actions: Dict[str, str] = {
         'describe': '_describe',
         'validate': '_validate_pretty'
@@ -40,6 +55,7 @@ class BaseResource(object):
     public_actions: List[str]  # public interfaces for this type
     schema: str  # the schema of this resource type as JSONSchema
     validator: Any = None
+    lock: threading.Lock
 
     @classmethod
     def _validate(cls, definition) -> bool:
@@ -92,4 +108,51 @@ class BaseResource(object):
 
     def __init__(self, definition):
         # should be validated before initialization
+        self.lock = threading.Lock()
+        self.__id = str(uuid4())
         self.definition = definition
+
+    @lock
+    def update(self, definition):
+        pass
+
+    def _on_change(self):
+        '''
+        Locks methods until update
+        '''
+        pass
+
+
+class InstanceManager(object):
+
+    instances: Dict[str, BaseResource]
+    rules: Dict[str, Any]
+    task: TaskHelper
+
+    def init(self, rules, TaskHelper):
+        self.rules = rules
+
+    def get(self, _id, _type):
+        '''
+        Get a resource class instance by name and ID
+        '''
+        key = self.format(_id, _type)
+        return self.instances[key]
+
+    def update(self, _id, _type, body):
+        key = self.format(_id, _type)
+        _cls = self.rules.get(_type, {}).get('class')
+        if key in self.instances:
+            # this is blocking on lock so thread it
+            thread = threading.Thread(
+                target=self.instances[key].update,
+                args=(body, ))
+            thread.start()
+        else:
+            self.instances[key] = _cls(body)
+
+    def dispatch(self, tenant=None, _type=None, operation=None, request=None):
+        pass
+
+    def format(_id, _type):
+        return f'{_type}:{_id}'

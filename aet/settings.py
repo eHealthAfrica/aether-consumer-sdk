@@ -39,6 +39,15 @@ class Settings(dict):
         except KeyError:
             return default
 
+    def __getattr__(self, name):
+        try:
+            super().__getattr__(name)
+        except AttributeError:
+            result = self.get(name)
+            if not result:
+                raise AttributeError(f'{self.__class__.__name__} object has no attribute {name}')
+            return result
+
     def __getitem__(self, key):
         if self.alias and key in self.alias:
             key = self.alias.get(key)

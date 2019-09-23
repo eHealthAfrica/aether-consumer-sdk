@@ -25,9 +25,11 @@ from time import sleep
 from threading import Thread
 from typing import Any, Callable, ClassVar, Dict, Union
 
+from aether.python.redis.task import Task, TaskHelper
+
 from .logger import get_logger
 from .jsonpath import CachedParser
-from .task import Task, TaskHelper
+from .resource import BaseResource
 
 LOG = get_logger('Job')
 
@@ -152,7 +154,8 @@ class JobManager(object):
             'redis_type': 'resource',
             'redis_name': '_resource:',
             'redis_path': '_resource:*',  # Where to subscribe for this type in Redis
-            'job_path': '$.resources'  # Where to find the resource reference in the job
+            'job_path': '$.resources',  # Where to find the resource reference in the job
+            'class': BaseResource       # Subclass of BaseResource
         }
     }
 
@@ -290,6 +293,9 @@ class JobManager(object):
             return self.jobs[_id].get_status()
         else:
             return f'no job with id:{_id}'
+
+    def dispatch_resource_call(self, tenant=None, _type=None, operation=None, request=None):
+        pass
 
     #############
     #

@@ -21,11 +21,12 @@
 import json
 import jsonschema
 from time import sleep
-from typing import Any, Dict, List, Union
+from typing import Any, ClassVar, Dict, List, Union
+
+from aether.python.redis.task import TaskHelper
 
 from .api import APIServer
 from .logger import get_logger
-from .task import TaskHelper
 from .job import JobManager, BaseJob
 from .settings import Settings
 
@@ -35,6 +36,11 @@ EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
 
 class BaseConsumer(object):
+
+    _classes: ClassVar[Dict[str, Any]] = {
+        'resource': BaseResource,
+        'job': BaseJob
+    }
 
     api: APIServer
     consumer_settings: Settings
@@ -98,3 +104,11 @@ class BaseConsumer(object):
         except jsonschema.exceptions.ValidationError as err:
             LOG.debug(err)
             return False
+
+    def dispatch(self, tenant=None, _type=None, operation=None, request=None):
+        return self.job_manager.dispatch_resource_call(
+            tenant,
+            _type,
+            operation,
+            request
+        )
