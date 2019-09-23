@@ -18,6 +18,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from datetime import datetime
+import threading
+
 import requests
 
 from . import *  # noqa
@@ -343,6 +346,18 @@ def test_resource__basic_describe_static():
 def test_resource__basic_describe_public():
     assert(len(TestResource._describe()) == 2)
 
+
+@pytest.mark.unit
+def test_resource__test_lock():
+    res = TestResource(TestResourceDef1)
+    threading.Thread(
+        target=res.sleepy_lock,
+        args=(2,)).start()
+    tick = datetime.now()
+    res.null('a-key')
+    tock = datetime.now()
+    diff = tock - tick
+    assert(diff.total_seconds() > 1)
 
 ######
 #

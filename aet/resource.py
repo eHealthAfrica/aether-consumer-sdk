@@ -41,6 +41,7 @@ def lock(f):
         res = f(*args, **kwargs)
         args[0].lock.release()
         return res
+    return wrapper
 
 
 class BaseResource(object):

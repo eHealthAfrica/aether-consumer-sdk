@@ -43,7 +43,7 @@ from aet.consumer import BaseConsumer
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.logger import get_logger
-from aet.resource import BaseResource
+from aet.resource import BaseResource, lock
 
 
 from .assets.schemas import test_schemas
@@ -116,11 +116,18 @@ class TestResource(BaseResource):
         except Exception:
             return None
 
+    @lock
     def null(self, key: str):
         '''
             Returns None, always
         '''
+        LOG.debug('Null.')
         return None
+
+    @lock
+    def sleepy_lock(self, dur):
+        sleep(dur)
+        LOG.debug('Wake up.')
 
 
 class MockCallable(object):
