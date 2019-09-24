@@ -26,13 +26,13 @@ from time import sleep
 from threading import Thread
 from typing import Any, Callable, ClassVar, Dict, Union
 
-from aether.python.redis.task import Task, TaskHelper
+from aether.python.redis.task import Task, TaskEvent, TaskHelper
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 
 from .logger import get_logger
 from .jsonpath import CachedParser
-from .resource import BaseResource
+from .resource import BaseResource, InstanceManager
 
 LOG = get_logger('Job')
 
@@ -50,7 +50,7 @@ class BaseJob(object):
     _id: str
     status: JobStatus = JobStatus.PAUSED
     config: dict = {}
-    resources: dict = {}
+    resources: InstanceManager
     value: int = 0
     # loop pause delay
     sleep_delay: float = 0.01
@@ -83,21 +83,15 @@ class BaseJob(object):
                 'validation_errors': [str(e) for e in errors]
             }
 
-    def __init__(self, _id):
+    def __init__(self, _id: str, tenant: str, resources: InstanceManager):
         self._id = _id
+        self.tenant = tenant,
+        self.resources = resources
         self._start()
 
     def set_config(self, config: dict) -> None:
         LOG.debug(f'Job {self._id} got new config {config}')
         self.config = config
-        if self.status is JobStatus.STOPPED:
-            self._start()
-        else:
-            self.status = JobStatus.RECONFIGURE
-
-    def set_resource(self, _type: str, resource: dict) -> None:
-        LOG.debug(f'Job {self._id} got updated resource:  {resource}')
-        self.resources[_type] = resource
         if self.status is JobStatus.STOPPED:
             self._start()
         else:
@@ -122,11 +116,11 @@ class BaseJob(object):
                     self.status = JobStatus.NORMAL
                     continue
                 # Do something useful here
-                # get a deepcopy of config & resources so they don't mutate mid-process
-                _config, _resources = self._copy_settings()
-                messages = self._get_messages(_config, _resources)
+                # get a deepcopy of config
+                config = deepcopy(self.config)
+                messages = self._get_messages(config)
                 if messages:
-                    self._handle_messages(_config, _resources, messages)
+                    self._handle_messages(config, messages)
             LOG.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
             LOG.critical(f'job {self._id} failed with critical error {fatal}')
@@ -136,14 +130,11 @@ class BaseJob(object):
         # blocks and handles changes to self.config or self.resources
         pass
 
-    def _copy_settings(self):
-        return deepcopy(self.config), deepcopy(self.resources)
-
-    def _get_messages(self, config, resources):
+    def _get_messages(self, config):
         # probably needs custom implementation for each consumer
         return [1, 2]  # get from Kafka or...
 
-    def _handle_messages(self, config, resources, messages):
+    def _handle_messages(self, config, messages):
         # probably needs custom implementation for each consumer
         # Do something based on the messages
         sleep(self.sleep_delay)
@@ -164,6 +155,9 @@ class BaseJob(object):
         # externally available information about this job.
         # At a minimum should return the running status
         return str(self.status)
+
+    def get_resource(self, _type, _id):
+        return self.resources.get(_id, _type, self.tenant)
 
     def stop(self, *args, **kwargs):
         self.status = JobStatus.STOPPED
@@ -187,15 +181,24 @@ class JobManager(object):
     }
 
     jobs: Dict[str, BaseJob] = {}
-    resources: Dict[str, dict] = {}
+    resources: InstanceManager
     task: TaskHelper
     job_class: Callable
+
+    @staticmethod
+    def get_job_id(job: Union[str, Dict[str, Any]], tenant: str):
+        if isinstance(job, dict):
+            _id = job.get('id')
+        else:
+            _id = job
+        return f'{tenant}:{_id}'
 
     # Start / Stop
 
     def __init__(self, task_master: TaskHelper, job_class: Callable = BaseJob):
         self.task = task_master
         self.job_class = job_class  # type: ignore
+        self.resource = InstanceManager(type(self)._resources)
         self._init_jobs()
 
     def stop(self, *args, **kwargs):
@@ -206,9 +209,12 @@ class JobManager(object):
     # Job Initialization
 
     def _init_jobs(self):
-        jobs = self.task.list(type=type(self)._job_redis_type)
-        for _id in jobs:
-            job: Dict = self.task.get(_id, type=type(self)._job_redis_type)
+        jobs = self.task.list(type=type(self)._job_redis_type, tenant='*')
+
+        LOG.debug(f'jobs: {jobs}')
+        for job in jobs:
+            tenant, _type, _id = job.split(':')
+            job: Dict = self.task.get(_id, type=type(self)._job_redis_type, tenant=tenant)
             LOG.debug(f'init job: {job}')
             self._init_job(job)
         self.listen_for_job_change()
@@ -218,114 +224,108 @@ class JobManager(object):
 
     def _init_job(
         self,
-        job: Dict[str, Any]
+        job: Dict[str, Any],
+        tenant: str
     ) -> None:
         # Attempt to start or update a job
         LOG.debug(f'initalizing job: {job}')
-        _id = job['id']
+        _id = JobManager.get_job_id(job, tenant)
         if _id in self.jobs.keys():
             LOG.debug(f'Job {_id} exists, updating')
-            self._configure_job(job)
+            self._configure_job(job, tenant)
         else:
-            self._start_job(job)
+            self._start_job(job, tenant)
 
     def _start_job(
         self,
-        job: Dict[str, Any]
+        job: Dict[str, Any],
+        tenant: str
     ) -> None:
         # Start a new job
         LOG.debug(f'starting job: {job}')
-        _id = job['id']
-        self.jobs[_id] = self.job_class(_id)
-        self._configure_job(job)
-
-    def _configure_job(
-        self,
-        job: Dict[str, Any]
-    ):
-        # Configure an existing job
-        _id = job['id']
-        LOG.debug(f'Configuring job {_id}')
-        try:
-            self._configure_job_resources(job)
-            LOG.debug(f'Resources configured for {_id}')
-        except (
-            AttributeError,
-            ValueError
-        ) as aer:
-            LOG.error(f'Job {_id} missing required resource, stopping: {aer}')
-            self._stop_job(_id)
-            return
+        _id = JobManager.get_job_id(job, tenant)
+        self.jobs[_id] = self.job_class(_id, self.resources)
         self.jobs[_id].set_config(job)
 
-    def _configure_job_resources(
-        self,
-        job: Dict[str, Any]
-    ) -> None:
-        # Configure resources for a job
-        job_id = job['id']
-        type_paths = [(k, r['job_path']) for k, r in type(self)._resources.items()]
-        LOG.debug(f'Job: {job_id} triggered checks on paths {type_paths}')
-        added_resources = []
-        for _type, path in type_paths:
-            matches = CachedParser.find(path, job)
-            if not matches:
-                LOG.debug(f'Job: {job_id} has no external resources for path {path}')
-                continue  # no dependent resource of this type
-            resource_id = [m.value for m in matches][0]
-            LOG.debug(f'Job : {job_id} depends on resource {_type}:{resource_id}')
-            added = self._register_resource_listener(
-                _type,
-                resource_id,
-                self.jobs[job_id]
-            )
-            if added:
-                added_resources.append([_type, resource_id])
-        for _type, resource_id in added_resources:
-            self._init_resource(_type, resource_id, self.jobs[job_id])
+    # def _configure_job(
+    #     self,
+    #     job: Dict[str, Any],
+    #     tenant: str
+    # ):
+    #     # Configure an existing job
+    #     job_id = JobManager.get_job_id(job, tenant)
+    #     self.jobs[job_id].set_config(job)
 
-    def _stop_job(self, _id: str) -> None:
-        LOG.debug(f'stopping job: {_id}')
-        if _id in self.jobs:
-            self.jobs[_id].stop()
+    # def _configure_job_resources(
+    #     self,
+    #     job: Dict[str, Any]
+    # ) -> None:
+    #     # Configure resources for a job
+    #     job_id = job['id']
+    #     type_paths = [(k, r['job_path']) for k, r in type(self)._resources.items()]
+    #     LOG.debug(f'Job: {job_id} triggered checks on paths {type_paths}')
+    #     added_resources = []
+    #     for _type, path in type_paths:
+    #         matches = CachedParser.find(path, job)
+    #         if not matches:
+    #             LOG.debug(f'Job: {job_id} has no external resources for path {path}')
+    #             continue  # no dependent resource of this type
+    #         resource_id = [m.value for m in matches][0]
+    #         LOG.debug(f'Job : {job_id} depends on resource {_type}:{resource_id}')
+    #         added = self._register_resource_listener(
+    #             _type,
+    #             resource_id,
+    #             self.jobs[job_id]
+    #         )
+    #         if added:
+    #             added_resources.append([_type, resource_id])
+    #     for _type, resource_id in added_resources:
+    #         self._init_resource(_type, resource_id, self.jobs[job_id])
 
-    def _remove_job(self, _id: str) -> None:
-        LOG.debug(f'removing job: {_id}')
-        self._stop_job(_id)
-        self._remove_resource_listeners(_id)
-        del self.jobs[_id]
+    def _stop_job(self, _id: str, tenant: str) -> None:
+        job_id = JobManager.get_job_id(_id, tenant)
+        LOG.debug(f'stopping job: {job_id}')
+        if job_id in self.jobs:
+            self.jobs[job_id].stop()
+
+    def _remove_job(self, _id: str, tenant: str) -> None:
+        job_id = JobManager.get_job_id(_id, tenant)
+        LOG.debug(f'removing job: {job_id}')
+        self._stop_job(job_id, tenant)
+        self._remove_resource_listeners(job_id)
+        del self.jobs[job_id]
 
     # Direct API Driven job control / visibility functions
 
-    def pause_job(self, _id: str) -> bool:
-        LOG.debug(f'pausing job: {_id}')
-        if _id in self.jobs:
-            self.jobs[_id].status = JobStatus.PAUSED
+    def pause_job(self, _id: str, tenant: str) -> bool:
+        job_id = JobManager.get_job_id(_id, tenant)
+        LOG.debug(f'pausing job: {job_id}')
+        if job_id in self.jobs:
+            self.jobs[job_id].status = JobStatus.PAUSED
             return True
         else:
-            LOG.debug(f'Could not find job {_id} to pause.')
+            LOG.debug(f'Could not find job {job_id} to pause.')
             return False
 
-    def resume_job(self, _id: str) -> bool:
-        LOG.debug(f'pausing job: {_id}')
-        if _id in self.jobs:
-            self.jobs[_id].status = JobStatus.NORMAL
+    def resume_job(self, _id: str, tenant: str) -> bool:
+        job_id = JobManager.get_job_id(_id, tenant)
+        LOG.debug(f'pausing job: {job_id}')
+        if job_id in self.jobs:
+            self.jobs[job_id].status = JobStatus.NORMAL
             return True
         else:
-            LOG.debug(f'Could not find job {_id} to pause.')
+            LOG.debug(f'Could not find job {job_id} to pause.')
             return False
 
-    def get_job_status(self, _id: str) -> Union[Dict[str, Any], str]:
-        if _id in self.jobs:
-            return self.jobs[_id].get_status()
+    def get_job_status(self, _id: str, tenant: str) -> Union[Dict[str, Any], str]:
+        job_id = JobManager.get_job_id(_id, tenant)
+        if job_id in self.jobs:
+            return self.jobs[job_id].get_status()
         else:
-            return f'no job with id:{_id}'
+            return f'no job with id:{job_id}'
 
     def dispatch_resource_call(self, tenant=None, _type=None, operation=None, request=None):
-        pass
-        # _cls = type(self).get(_type, {}).get('class')
-        # if operation in _cls.static_actions:
-        #     fn = getattr(_cls, operation)
+        return self.resources.dispatch(tenant, _type, operation, request)
 
     #############
     #
@@ -338,7 +338,7 @@ class JobManager(object):
     def listen_for_job_change(self):
         _path = type(self)._job_redis_path
         LOG.debug(f'Registering Job Change Listener, {_path}')
-        self.task.subscribe(self.on_job_change, _path)
+        self.task.subscribe(self.on_job_change, _path, True)
 
     def listen_for_resource_change(self):
         # handles work for all resource types
@@ -347,89 +347,102 @@ class JobManager(object):
             LOG.debug(f'Listening for resource {_type} on {redis_path}')
             # use a partial to keep from having to inspect the message source later
             callback = partial(self.on_resource_change, _type)
-            self.task.subscribe(callback, redis_path)
+            self.task.subscribe(callback, redis_path, True)
 
-    # attach a resource listener to a job that depends on it
-    def _register_resource_listener(
-        self,
-        _type: str,
-        resource_id: str,
-        job: BaseJob
-    ) -> bool:
+    # # attach a resource listener to a job that depends on it
+    # def _register_resource_listener(
+    #     self,
+    #     _type: str,
+    #     resource_id: str,
+    #     job: BaseJob
+    # ) -> bool:
 
-        # register callbacks for job resource listeners
-        # make sure structures exist for this _type & resource_id
-        if not self.resources.get(_type):
-            self.resources[_type] = {}
-        if not self.resources[_type].get(resource_id):
-            self.resources[_type][resource_id] = []
-        # see if this job is already listening to this resource to avoid duplicates
-        listening_jobs = self.resources[_type][resource_id]
-        if job._id in [j._id for j in listening_jobs]:
-            LOG.debug(f'Job {job._id} already subscribed to {_type} : {resource_id}')
-            return False
-        # add job reference to listening jobs
-        LOG.debug(f'Job {job._id} subscribing to {_type} : {resource_id}')
-        listening_jobs.append(job)
-        return True
+    #     # register callbacks for job resource listeners
+    #     # make sure structures exist for this _type & resource_id
+        
+    #     if not self.resources.get(_type):
+    #         self.resources[_type] = {}
+    #     if not self.resources[_type].get(resource_id):
+    #         self.resources[_type][resource_id] = []
+        
+    #     # see if this job is already listening to this resource to avoid duplicates
+    #     listening_jobs = self.resources[_type][resource_id]
+    #     if job._id in [j._id for j in listening_jobs]:
+    #         LOG.debug(f'Job {job._id} already subscribed to {_type} : {resource_id}')
+    #         return False
+    #     # add job reference to listening jobs
+    #     LOG.debug(f'Job {job._id} subscribing to {_type} : {resource_id}')
+    #     listening_jobs.append(job)
+    #     return True
 
-    # remove all resource listeners for shutdown
-    def _remove_resource_listeners(self, job_id: str) -> None:
-        # remove all resource listeners for a job with id -> job_id
-        for _type in self.resources.keys():
-            for resource_id in self.resources[_type].keys():
-                jobs = [j for j in self.resources[_type][resource_id] if j._id != job_id]
-                self.resources[_type][resource_id] = jobs
-        return
+    # # remove all resource listeners for shutdown
+    # def _remove_resource_listeners(self, job_id: str) -> None:
+    #     # remove all resource listeners for a job with id -> job_id
+    #     for _type in self.resources.keys():
+    #         for resource_id in self.resources[_type].keys():
+    #             jobs = [j for j in self.resources[_type][resource_id] if j._id != job_id]
+    #             self.resources[_type][resource_id] = jobs
+    #     return
 
     # manually go out and grab a resource // happens on startup
-    def _init_resource(
-        self,
-        _type: str,
-        resource_id: str,
-        job: BaseJob
-    ) -> None:
-        LOG.debug(f'Initializing resource for job {job._id} -> {_type}:{resource_id}')
-        res = self.task.get(_id=resource_id, type=_type)
-        job.set_resource(_type, res)
-        return
+    # def _init_resource(
+    #     self,
+    #     _type: str,
+    #     resource_id: str,
+    #     job: BaseJob
+    # ) -> None:
+    #     LOG.debug(f'Initializing resource for job {job._id} -> {_type}:{resource_id}')
+    #     res = self.task.get(_id=resource_id, type=_type)
+    #     job.set_resource(_type, res)
+    #     return
+
+    def initialize_resources(self):
+        for _type, rule in type(self)._resources.items():
+            _type = rule['redis_type']
+            self.task.list(_type, '*')
+            
+
 
     # generic handler called on change of any resource. Dispatched to dependent jobs
     def on_resource_change(
         self,
-        _type: str,
-        msg: Task
+        msg: Union[Task, TaskEvent]
     ) -> None:
+        self.resources.on_resource_change(msg)
 
-        # find out which jobs this pertains to
-        LOG.debug(f'Consumer resource update : "{_type}": {msg}')
-        resource_id = msg.id.split(
-            type(self)._resources[_type]['redis_name'])[1]
-        # find jobs this pertains to
-        jobs = self.resources.get(_type, {}).get(resource_id, {})
-        if not jobs:
-            LOG.debug(f'No matching jobs for resource {_type}:{resource_id} registered. Ignoring')
-            return
-        job: BaseJob
-        for job in jobs:
-            if msg.type == 'set':
-                LOG.debug(f'Sending update to subscriber {job._id}')
-                job.set_resource(_type, msg.data)  # type: ignore  # overly pedantic with dicts
-            elif msg.type == 'del':
-                LOG.debug(f'Job: {job._id} has unmet resource dependency'
-                          f' {_type}:{msg.id}. Stopping.')
-                job.stop()
+        # # find out which jobs this pertains to
+        # LOG.debug(f'Consumer resource update : "{_type}": {msg}')
+        # if isinstance(msg, Task):
+        #     resource_id = msg.id
+        # else:
+        #     resource_id.event_id
+        # # find jobs this pertains to
+        # jobs = self.resources.get(_type, {}).get(resource_id, {})
+        # if not jobs:
+        #     LOG.debug(f'No matching jobs for resource {_type}:{resource_id} registered. Ignoring')
+        #     return
+        # job: BaseJob
+        # for job in jobs:
+        #     if isinstance(msg, Task):
+        #         LOG.debug(f'Sending update to subscriber {job._id}')
+        #         job.set_resource(_type, msg.data)  # type: ignore  # overly pedantic with dicts
+        #     elif isinstance(msg, TaskEvent) and msg.event == 'del':
+        #         LOG.debug(f'Job: {job._id} has unmet resource dependency'
+        #                   f' {_type}:{msg.id}. Stopping.')
+        #         job.stop()
 
     # generic job change listener then dispatched to the proper job / creates new job
-    def on_job_change(self, msg: Task) -> None:
-        LOG.debug(f'Consumer received cmd: "{msg.type}" on job: {msg.id}')
-        if msg.type == 'set':
+    def on_job_change(self, msg: Union[Task, TaskEvent]) -> None:
+        if isinstance(msg, Task):
+            LOG.debug(f'Consumer received Task: "{msg.type}" on job: {msg.id}')
             job = msg.data
+            tenant = msg.tenant
             if job:  # type checker gets mad without the check here
-                self._init_job(job)
-        elif msg.type == 'del':
-            _id = self._get_id(msg)  # just the id
-            self._remove_job(_id)
+                self._init_job(job, tenant)
+        elif isinstance(msg, TaskEvent):
+            LOG.debug(f'Consumer received TaskEvent: "{msg}"')
+            if msg.event == 'del':
+                self._remove_job(msg.task_id)
 
     #############
     #

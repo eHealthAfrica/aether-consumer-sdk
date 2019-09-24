@@ -22,13 +22,11 @@
 from inspect import signature
 import json
 import threading
-from typing import Any, Dict, List
-from uuid import uuid4
+from typing import Any, Dict, List, Union
 
+from aether.python.redis.task import Task, TaskEvent
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
-
-from aether.python.redis.task import TaskHelper
 
 from .logger import get_logger
 
@@ -53,7 +51,7 @@ def lock(f):
 
 
 class BaseResource(object):
-    __id: str
+    id: str
     definition: Any  # the implementation of this resource
     # requires no instance to execute
     static_actions: Dict[str, str] = {
@@ -118,7 +116,7 @@ class BaseResource(object):
     def __init__(self, definition):
         # should be validated before initialization
         self.lock = threading.Lock()
-        self.__id = str(uuid4())
+        self.id = definition['id']
         self.definition = definition
 
     @lock
@@ -136,21 +134,29 @@ class InstanceManager(object):
 
     instances: Dict[str, BaseResource]
     rules: Dict[str, Any]
-    task: TaskHelper
 
-    def init(self, rules, helper):
+    def init(self, rules):
         self.rules = rules
-        self.task = helper
 
-    def get(self, _id, _type):
+    def _on_init(self):
+        pass
+
+    def exists(self, _id, _type, tenant):
+        key = self.format(_id, _type, tenant)
+        return key in self.instances
+
+    def get(self, _id, _type, tenant):
         '''
         Get a resource class instance by name and ID
         '''
-        key = self.format(_id, _type)
-        return self.instances[key]
+        key = self.format(_id, _type, tenant)
+        try:
+            return self.instances[key]
+        except KeyError:
+            return None
 
-    def update(self, _id, _type, body):
-        key = self.format(_id, _type)
+    def update(self, _id, _type, tenant, body):
+        key = self.format(_id, _type, tenant)
         _cls = self.rules.get(_type, {}).get('class')
         if key in self.instances:
             # this is blocking on lock so thread it
@@ -164,5 +170,37 @@ class InstanceManager(object):
     def dispatch(self, tenant=None, _type=None, operation=None, request=None):
         pass
 
-    def format(_id, _type):
-        return f'{_type}:{_id}'
+    def format(_id, _type, tenant):
+        return f'{tenant}:{_type}:{_id}'
+
+    def remove(self, _id, _type, tenant):
+        key = self.format(_id, _type, tenant)
+        if key in self.instances:
+            thread = threading.Thread(
+                target=self.__remove_on_unlock,
+                args=(key, ))
+            thread.start()
+        return True
+
+    def __remove_on_unlock(self, key):
+        try:
+            obj = self.instances[key]
+            lock = obj.lock
+            lock.acquire()
+            # safe to delete
+            del self.instances[key]
+            lock.release()
+        except KeyError:
+            pass
+
+    def on_resource_change(self, msg: Union[Task, TaskEvent]) -> None:
+        if isinstance(msg, Task):
+            LOG.debug(f'Received Task: "{msg.type}" on job: {msg.id}')
+            job = msg.data
+            tenant = msg.tenant
+            if job:  # type checker gets mad without the check here
+                self._init_job(job, tenant)
+        elif isinstance(msg, TaskEvent):
+            LOG.debug(f'Received TaskEvent: "{msg}"')
+            if msg.event == 'del':
+                self.remove(msg.task_id, msg.type, msg.tenant)

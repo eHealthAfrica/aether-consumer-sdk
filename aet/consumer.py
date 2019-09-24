@@ -22,6 +22,7 @@ from time import sleep
 from typing import Any, ClassVar, Dict, List, Union
 
 from aether.python.redis.task import TaskHelper
+import redis
 
 from .api import APIServer
 from .logger import get_logger
@@ -36,6 +37,7 @@ EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
 class BaseConsumer(object):
 
+    # classes used by this consumer
     _classes: ClassVar[Dict[str, Any]] = {
         'resource': BaseResource,
         'job': BaseJob
@@ -47,10 +49,25 @@ class BaseConsumer(object):
     job_manager: JobManager
     task: TaskHelper
 
+    @classmethod
+    def get_redis(cls, settings):
+        return redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            password=settings.REDIS_PASSWORD,
+            db=settings.REDIS_DB,
+            encoding='utf-8',
+            decode_responses=False
+        )
+        pass
+
     def __init__(self, CON_CONF, KAFKA_CONF):
+
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
-        self.task = TaskHelper(self.consumer_settings)
+        self.task = TaskHelper(
+            self.consumer_settings,
+            redis_instance=type(self).get_redis(CON_CONF))
         self.job_manager = JobManager(self.task, job_class=BaseJob)
         self.serve_api(self.consumer_settings)
 

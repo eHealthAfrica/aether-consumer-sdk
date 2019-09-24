@@ -15,6 +15,8 @@ services:
     ]
     env_file:
       - tests/test_environment.env
+    ports:
+      - 6379:6379
 
   zookeeper-test:
     image: confluentinc/cp-zookeeper:5.2.1

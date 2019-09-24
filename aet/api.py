@@ -335,11 +335,17 @@ class APIServer(object):
         if operation == 'DELETE':
             if not _id:
                 return Response('Argument "id" is required', 400)
-            response = self.task.remove(_id, _type, tenant)
+            try:
+                response = self.task.remove(_id, _type, tenant)
+            except ValueError:
+                response = {'error': f'{_type} object with id : {_id} not found'}
         if operation == 'READ':
             if not _id:
                 return Response('Argument "id" is required', 400)
-            response = json.loads(str(self.task.get(_id, _type, tenant)))
+            try:
+                response = json.loads(str(self.task.get(_id, _type, tenant)))
+            except ValueError:
+                response = {'error': f'{_type} object with id : {_id} not found'}
         if operation == 'LIST':
             response = list(self.task.list(_type, tenant))
         with self.app.app_context():

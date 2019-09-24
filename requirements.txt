@@ -4,7 +4,7 @@
 #                                                                              #
 ################################################################################
 
-aether.python==1.0.8
+aether.python==1.0.9
 confluent_kafka
 flask
 jsonpath_ng
@@ -17,6 +17,7 @@ webtest
 
 # Test libraries
 
+birdisle
 flake8
 pytest
 pytest-cov

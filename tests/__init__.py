@@ -18,6 +18,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import birdisle.redis
 from copy import deepcopy
 import io
 import json
@@ -83,6 +84,16 @@ class TestResource(BaseResource):
         "password"
       ],
       "properties": {
+        "id": {
+          "$id": "#/properties/id",
+          "type": "string",
+          "title": "The ID Schema",
+          "default": "",
+          "examples": [
+            "someid"
+          ],
+          "pattern": "^(.*)$"
+        },
         "username": {
           "$id": "#/properties/username",
           "type": "string",
@@ -149,25 +160,12 @@ class MockCallable(object):
         self.value = msg
 
 
-class MockTaskHelper(object):
-
-    def __init__(self):
-        pass
-
-    def add(self, task, type, tenant):
-        return True
-
-    def exists(self, _id, type, tenant):
-        return True
-
-    def remove(self, _id, type, tenant):
-        return True
-
-    def get(self, _id, type, tenant):
-        return '{}'
-
-    def list(self, type=None, tenant=None):
-        return []
+def get_fakeredis():
+    birdisle.redis.LocalSocketConnection.health_check_interval = 0
+    redis_instance = birdisle.redis.StrictRedis()
+    # set keyspace notifications as we do in live
+    redis_instance.config_set('notify-keyspace-events', 'KEA')
+    return redis_instance
 
 
 class MockConsumer(BaseConsumer):
@@ -181,7 +179,10 @@ class MockConsumer(BaseConsumer):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         self.children = []
-        self.task = MockTaskHelper()
+        self.task = TaskHelper(
+            self.consumer_settings,
+            get_fakeredis()
+        )
 
     def pause(self, *args, **kwargs) -> bool:
         return True

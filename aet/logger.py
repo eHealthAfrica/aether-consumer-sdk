@@ -32,3 +32,12 @@ def get_logger(name):
     level = logging.getLevelName(CONSUMER_CONFIG.get('log_level', 'DEBUG'))
     logger.setLevel(level)
     return logger
+
+
+def wrap_logger(logger, name):
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        f'%(asctime)s [AET][{name}] %(levelname)-8s %(message)s'))
+    logger.addHandler(handler)
+    level = logging.getLevelName(CONSUMER_CONFIG.get('log_level', 'DEBUG'))
+    logger.setLevel(level)

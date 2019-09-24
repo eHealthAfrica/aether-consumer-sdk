@@ -50,6 +50,7 @@ setup(
         'webtest',
     ],
     tests_require=[
+        'birdisle',
         'flake8',
         'pytest',
         'pytest-cov',
