@@ -24,7 +24,7 @@ import json
 import os
 import pytest
 from time import sleep
-from typing import ClassVar, List, Iterable, Optional  # noqa
+from typing import Any, ClassVar, Dict, List, Iterable, Optional  # noqa
 from unittest import mock
 from uuid import uuid4
 
@@ -40,6 +40,7 @@ from spavro.schema import parse as ParseSchema
 from aet import settings
 from aet.api import APIServer
 from aet.consumer import BaseConsumer
+from aet.job import BaseJob
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.logger import get_logger
@@ -130,6 +131,16 @@ class TestResource(BaseResource):
         LOG.debug('Wake up.')
 
 
+class TestJob(BaseJob):
+    schema = '''
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+    '''
+
+
 class MockCallable(object):
     value: Optional[Task] = None
 
@@ -143,36 +154,27 @@ class MockTaskHelper(object):
     def __init__(self):
         pass
 
-    def add(self, task, type):
+    def add(self, task, type, tenant):
         return True
 
-    def exists(self, _id, type):
+    def exists(self, _id, type, tenant):
         return True
 
-    def remove(self, _id, type):
+    def remove(self, _id, type, tenant):
         return True
 
-    def get(self, _id, type):
+    def get(self, _id, type, tenant):
         return '{}'
 
-    def list(self, type=None):
+    def list(self, type=None, tenant=None):
         return []
 
 
 class MockConsumer(BaseConsumer):
 
-    PERMISSIVE_SCHEMA: ClassVar[dict] = {  # should match anything
-        'type': 'object',
-        'additionalProperties': True,
-        'properties': {
-        }
-    }
-
-    STRICT_SCHEMA: ClassVar[dict] = {  # should match nothing but empty brackets -> {}
-        'type': 'object',
-        'additionalProperties': False,
-        'properties': {
-        }
+    _classes: ClassVar[Dict[str, Any]] = {
+        'resource': TestResource,
+        'job': TestJob
     }
 
     def __init__(self, CON_CONF, KAFKA_CONF):
@@ -180,10 +182,6 @@ class MockConsumer(BaseConsumer):
         self.kafka_settings = KAFKA_CONF
         self.children = []
         self.task = MockTaskHelper()
-        self.schemas = {
-            'job': MockConsumer.STRICT_SCHEMA,
-            'resource': MockConsumer.STRICT_SCHEMA
-        }
 
     def pause(self, *args, **kwargs) -> bool:
         return True

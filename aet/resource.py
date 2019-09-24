@@ -22,7 +22,7 @@
 from inspect import signature
 import json
 import threading
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import Any, Dict, List
 from uuid import uuid4
 
 from jsonschema import Draft7Validator
@@ -36,11 +36,19 @@ LOG = get_logger('Resource')
 
 
 def lock(f):
-    def wrapper(*args, **kwargs):
-        args[0].lock.acquire()
-        res = f(*args, **kwargs)
-        args[0].lock.release()
-        return res
+    def wrapper(self, *args, **kwargs):
+        if not self.lock.acquire(timeout=type(self).lock_timeout_sec):
+            raise RuntimeError(f'Could not acquire lock for method {f.__name__} in time.')
+        try:
+            res = f(self, *args, **kwargs)
+            return res
+        except Exception as err:
+            raise err
+        finally:
+            try:
+                self.lock.release()
+            except RuntimeError:
+                LOG.debug('Tried to release open lock.')
     return wrapper
 
 
@@ -56,6 +64,7 @@ class BaseResource(object):
     schema: str  # the schema of this resource type as JSONSchema
     validator: Any = None
     lock: threading.Lock
+    lock_timeout_sec: int = 60
 
     @classmethod
     def _validate(cls, definition) -> bool:
@@ -75,7 +84,7 @@ class BaseResource(object):
             errors = sorted(cls.validator.iter_errors(definition), key=str)
             return {
                 'valid': False,
-                'validation_errors': [e for e in errors]
+                'validation_errors': [str(e) for e in errors]
             }
 
     @classmethod

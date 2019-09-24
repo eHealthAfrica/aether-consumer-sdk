@@ -21,11 +21,14 @@
 from copy import deepcopy
 import enum
 from functools import partial
+import json
 from time import sleep
 from threading import Thread
 from typing import Any, Callable, ClassVar, Dict, Union
 
 from aether.python.redis.task import Task, TaskHelper
+from jsonschema import Draft7Validator
+from jsonschema.exceptions import ValidationError
 
 from .logger import get_logger
 from .jsonpath import CachedParser
@@ -55,6 +58,30 @@ class BaseJob(object):
     report_interval: int = 10
     # join timeout for the worker thread
     shutdown_grace_period: int = 5
+    # the configuration schema for instances of this job
+    schema: str  # jsonschema for job instructions
+    validator: Any = None  # jsonschema validation object
+
+    @classmethod
+    def _validate(cls, definition) -> bool:
+        if not cls.validator:
+            cls.validator = Draft7Validator(json.loads(cls.schema))
+        try:
+            cls.validator.validate(definition)
+            return True
+        except ValidationError:
+            return False
+
+    @classmethod
+    def _validate_pretty(cls, definition):
+        if cls._validate(definition):
+            return {'valid': True}
+        else:
+            errors = sorted(cls.validator.iter_errors(definition), key=str)
+            return {
+                'valid': False,
+                'validation_errors': [str(e) for e in errors]
+            }
 
     def __init__(self, _id):
         self._id = _id

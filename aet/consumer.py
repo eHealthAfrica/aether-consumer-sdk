@@ -18,8 +18,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import json
-import jsonschema
 from time import sleep
 from typing import Any, ClassVar, Dict, List, Union
 
@@ -47,7 +45,6 @@ class BaseConsumer(object):
     consumer_settings: Settings
     kafka_settings: Settings
     job_manager: JobManager
-    schemas: Dict[str, Any] = {}
     task: TaskHelper
 
     def __init__(self, CON_CONF, KAFKA_CONF):
@@ -74,22 +71,15 @@ class BaseConsumer(object):
         sleep(.25)
         LOG.info('Shutdown Complete')
 
-    def load_schema(self, path=None):
-        path = path if path else self.consumer_settings.get('schema_path')
-        if not path:
-            raise AttributeError('No schema path available for validations.')
-        with open(path) as f:
-            return json.load(f)
-
     # Job API Functions that aren't pure delegation to Redis
 
-    def pause(self, _id: str) -> bool:
+    def pause(self, _id: str, tenant: str = None) -> bool:
         return self.job_manager.pause_job(_id)
 
-    def resume(self, _id) -> bool:
+    def resume(self, _id, tenant: str = None) -> bool:
         return self.job_manager.resume_job(_id)
 
-    def status(self, _id: Union[str, List[str]]) -> List:
+    def status(self, _id: Union[str, List[str]], tenant: str = None) -> List:
         if isinstance(_id, str):
             return [self.job_manager.get_job_status(_id)]
         else:
@@ -97,14 +87,15 @@ class BaseConsumer(object):
 
     # Generic API Functions that aren't pure delegation to Redis
 
-    def validate(self, job, _type=None, schema=None):
-        schema = schema if schema else self.schemas.get(_type, {})
-        try:
-            jsonschema.validate(job, schema)  # Throws ValidationErrors
-            return True
-        except jsonschema.exceptions.ValidationError as err:
-            LOG.debug(err)
-            return False
+    def validate(self, job, _type=None, verbose=False, tenant=None):
+        # consumer the tenant argument only because other methods need it
+        _cls = type(self)._classes.get(_type)
+        if not _cls:
+            return {'error': f'un-handled type: {_type}'}
+        if verbose:
+            return _cls._validate_pretty(job)
+        else:
+            return _cls._validate(job)
 
     def dispatch(self, tenant=None, _type=None, operation=None, request=None):
         return self.job_manager.dispatch_resource_call(

@@ -253,7 +253,7 @@ class APIServer(object):
     def status(self, tenant=None, _type=None, operation=None):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.status(_id))
+            return jsonify(self.consumer.status(_id, tenant))
 
     @restrict_types('PAUSE')
     @requires_auth
@@ -261,7 +261,7 @@ class APIServer(object):
     def pause(self, tenant=None, _type=None, operation=None):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.pause(_id))
+            return jsonify(self.consumer.pause(_id, tenant))
 
     @restrict_types('RESUME')
     @requires_auth
@@ -269,7 +269,7 @@ class APIServer(object):
     def resume(self, tenant=None, _type=None, operation=None):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.resume(_id))
+            return jsonify(self.consumer.resume(_id, tenant))
 
     # Generic CRUD
 
@@ -328,19 +328,19 @@ class APIServer(object):
         _id = request.args.get('id', None)
         response: Union[str, List, Dict, bool]  # anything compatible with jsonify
         if operation == 'CREATE':
-            if self.consumer.validate(request.get_json(), _type=_type):
-                response = self.task.add(request.get_json(), type=_type)
+            if self.consumer.validate(request.get_json(), _type, tenant):
+                response = self.task.add(request.get_json(), _type, tenant)
             else:
                 response = False
         if operation == 'DELETE':
             if not _id:
                 return Response('Argument "id" is required', 400)
-            response = self.task.remove(_id, type=_type)
+            response = self.task.remove(_id, _type, tenant)
         if operation == 'READ':
             if not _id:
                 return Response('Argument "id" is required', 400)
-            response = json.loads(str(self.task.get(_id, type=_type)))
+            response = json.loads(str(self.task.get(_id, _type, tenant)))
         if operation == 'LIST':
-            response = list(self.task.list(type=_type))
+            response = list(self.task.list(_type, tenant))
         with self.app.app_context():
             return jsonify(response)
