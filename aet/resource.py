@@ -121,12 +121,21 @@ class BaseResource(object):
 
     @lock
     def update(self, definition):
-        pass
+        self.definition = definition
+        self._on_change()
 
     def _on_change(self):
         '''
-        Locks methods until update
+        Handles changes
         '''
+        pass
+
+    @lock
+    def _stop(self):
+        '''
+        Handles stop call before removal
+        '''
+        LOG.debug(f'{self.id} stopped.')
         pass
 
 
@@ -135,8 +144,21 @@ class InstanceManager(object):
     instances: Dict[str, BaseResource]
     rules: Dict[str, Any]
 
-    def init(self, rules):
+    def __init__(self, rules):
         self.rules = rules
+        self.instances = {}
+
+    def stop(self):
+        LOG.info('Stopping Instances')
+        keys = list(self.instances.keys())
+        for k in keys:
+            LOG.debug(f'Stopping {k}')
+            # self.__remove_on_unlock(k)
+            thread = threading.Thread(
+                target=self.__remove_on_unlock,
+                args=(k, ),
+                daemon=True)
+            thread.start()
 
     def _on_init(self):
         pass
@@ -162,7 +184,8 @@ class InstanceManager(object):
             # this is blocking on lock so thread it
             thread = threading.Thread(
                 target=self.instances[key].update,
-                args=(body, ))
+                args=(body, ),
+                daemon=True)
             thread.start()
         else:
             self.instances[key] = _cls(body)
@@ -170,7 +193,7 @@ class InstanceManager(object):
     def dispatch(self, tenant=None, _type=None, operation=None, request=None):
         pass
 
-    def format(_id, _type, tenant):
+    def format(self, _id, _type, tenant):
         return f'{tenant}:{_type}:{_id}'
 
     def remove(self, _id, _type, tenant):
@@ -178,28 +201,30 @@ class InstanceManager(object):
         if key in self.instances:
             thread = threading.Thread(
                 target=self.__remove_on_unlock,
-                args=(key, ))
+                args=(key, ),
+                daemon=True)
             thread.start()
         return True
 
     def __remove_on_unlock(self, key):
         try:
             obj = self.instances[key]
-            lock = obj.lock
-            lock.acquire()
+            obj._stop()
             # safe to delete
             del self.instances[key]
-            lock.release()
         except KeyError:
             pass
 
     def on_resource_change(self, msg: Union[Task, TaskEvent]) -> None:
         if isinstance(msg, Task):
             LOG.debug(f'Received Task: "{msg.type}" on job: {msg.id}')
-            job = msg.data
+            _type = '_'.join(msg.type.split('_')[1:])
+            _id = msg.id
+            # _type = msg.type
+            body = msg.data
+            LOG.info(body)
             tenant = msg.tenant
-            if job:  # type checker gets mad without the check here
-                self._init_job(job, tenant)
+            self.update(_id, _type, tenant, body)
         elif isinstance(msg, TaskEvent):
             LOG.debug(f'Received TaskEvent: "{msg}"')
             if msg.event == 'del':

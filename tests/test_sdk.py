@@ -545,6 +545,59 @@ def test_api_post_calls(call, result, body, raises_error, mocked_api):
 #
 #####
 
+i_resources = [
+    {
+        'id': 'a1',
+        'say': 'a',
+        'wait': 1
+    },
+    {
+        'id': 'b1',
+        'say': 'b',
+        'wait': 1
+    },
+    {
+        'id': 'c1',
+        'say': 'c',
+        'wait': 1
+    }
+]
+
+i_job = {
+    'id': 'job-id',
+    'resources': ['a1', 'b1', 'c1'],
+    'poll_interval': 1
+}
+
+
+@pytest.mark.unit
+def test_itest_one_job(IJobManager):
+    _type = 'resource'
+    ten = 'test-1'
+    resources = [
+        {
+            'id': 'a1',
+            'say': 'a',
+            'wait': 1
+        },
+        {
+            'id': 'b1',
+            'say': 'b',
+            'wait': 1
+        },
+        {
+            'id': 'c1',
+            'say': 'c',
+            'wait': 1
+        }
+    ]
+    LOG.debug(IJobManager)
+    for res in resources:
+        IJobManager.task.add(res, _type, ten)
+    IJobManager.task.add(i_job, 'job', ten)
+    sleep(1)
+
+
 @pytest.mark.integration
 def test_consumer__startup_shutdown(consumer):
     call = 'healthcheck'

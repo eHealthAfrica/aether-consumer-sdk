@@ -61,13 +61,15 @@ class BaseConsumer(object):
         )
         pass
 
-    def __init__(self, CON_CONF, KAFKA_CONF):
+    def __init__(self, CON_CONF, KAFKA_CONF, redis_instance=None):
 
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
+        if not redis_instance:
+            redis_instance = type(self).get_redis(CON_CONF)
         self.task = TaskHelper(
             self.consumer_settings,
-            redis_instance=type(self).get_redis(CON_CONF))
+            redis_instance=redis_instance)
         self.job_manager = JobManager(self.task, job_class=BaseJob)
         self.serve_api(self.consumer_settings)
 

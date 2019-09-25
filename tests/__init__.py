@@ -41,7 +41,7 @@ from spavro.schema import parse as ParseSchema
 from aet import settings
 from aet.api import APIServer
 from aet.consumer import BaseConsumer
-from aet.job import BaseJob
+from aet.job import BaseJob, JobManager, JobStatus
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.logger import get_logger
@@ -62,7 +62,7 @@ kafka_connection_retry_wait = 6
 topic_size = 500
 
 
-TestResourceDef1 = {'username': 'user', 'password': 'pw'}
+TestResourceDef1 = {'id': '1', 'username': 'user', 'password': 'pw'}
 
 
 class TestResource(BaseResource):
@@ -152,6 +152,146 @@ class TestJob(BaseJob):
     '''
 
 
+class IResource(BaseResource):
+
+    public_actions = [
+        'say_wait'
+    ]
+
+    schema = '''
+    {
+      "definitions": {},
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "http://example.com/root.json",
+      "type": "object",
+      "title": "The Root Schema",
+      "required": [
+        "id",
+        "say",
+        "wait"
+      ],
+      "properties": {
+        "id": {
+          "$id": "#/properties/id",
+          "type": "string",
+          "title": "The Id Schema",
+          "default": "",
+          "examples": [
+            "an-id"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "say": {
+          "$id": "#/properties/say",
+          "type": "string",
+          "title": "The Say Schema",
+          "default": "",
+          "examples": [
+            "something"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "wait": {
+          "$id": "#/properties/wait",
+          "type": "integer",
+          "title": "The Wait Schema",
+          "default": 0,
+          "examples": [
+            1
+          ]
+        }
+      }
+    }
+    '''
+
+    @lock
+    def say_wait(self):
+        sleep(int(self.definition.get('wait')))
+        return self.definition.get('say')
+
+    def say(self):
+        return self.definition.get('say')
+
+
+class IJob(BaseJob):
+
+    _resources: ClassVar[dict] = {
+        'resource': {
+            'redis_type': 'resource',
+            'redis_name': '_resource:',
+            'redis_path': '_resource:*',  # Where to subscribe for this type in Redis
+            'job_path': '$.resources',  # Where to find the resource reference in the job
+            'class': IResource       # Subclass of BaseResource
+        }
+    }
+
+    schema = '''
+    {
+      "definitions": {},
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "http://example.com/root.json",
+      "type": "object",
+      "title": "The Root Schema",
+      "required": [
+        "id",
+        "resources",
+        "poll_interval"
+      ],
+      "properties": {
+        "id": {
+          "$id": "#/properties/id",
+          "type": "string",
+          "title": "The Id Schema",
+          "default": "",
+          "examples": [
+            "an-id"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "resources": {
+          "$id": "#/properties/resources",
+          "type": "array",
+          "title": "The Resources Schema",
+          "items": {
+            "$id": "#/properties/resources/items",
+            "type": "string",
+            "title": "The Items Schema",
+            "default": "",
+            "examples": [
+              "a",
+              "b"
+            ],
+            "pattern": "^(.*)$"
+          }
+        },
+        "poll_interval": {
+          "$id": "#/properties/poll_interval",
+          "type": "integer",
+          "title": "The Poll_interval Schema",
+          "default": 0,
+          "examples": [
+            1
+          ]
+        }
+      }
+    }
+    '''
+
+    def _get_messages(self, config):
+        messages = []
+        resources = self.get_resources('resource')
+        for r in resources:
+            val = r.say_wait()  # long running
+            if self.status is JobStatus.STOPPED:
+                return []
+            messages.append(val)
+        return messages
+
+    def _handle_messages(self, config, messages):
+        for m in messages:
+            LOG.debug(m)
+
+
 class MockCallable(object):
     value: Optional[Task] = None
 
@@ -226,6 +366,26 @@ def send_avro_messages(producer, topic, schema, messages):
     if not record_metadata:
         pass  # we may want to check the metadata in the future
     producer.flush()
+
+
+@pytest.mark.unit
+@pytest.fixture(scope="function")
+def IJobManager():
+    task = TaskHelper(
+        settings.CONSUMER_CONFIG,
+        get_fakeredis()
+    )
+    assert(task is not None)
+    man = JobManager(task, IJob)
+    LOG.debug(man.task)
+    yield man
+    # sleep(5)
+    man.stop()
+    man.task.stop()
+    sleep(5)
+    print('stopped!')
+    # man.stop()
+    # # man.task.stop()
 
 
 @pytest.mark.unit
