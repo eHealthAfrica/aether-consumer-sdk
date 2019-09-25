@@ -19,8 +19,10 @@
 # under the License.
 
 
+from datetime import datetime
 from inspect import signature
 import json
+import queue
 import threading
 from typing import Any, Dict, List, Union
 
@@ -35,18 +37,41 @@ LOG = get_logger('Resource')
 
 def lock(f):
     def wrapper(self, *args, **kwargs):
-        if not self.lock.acquire(timeout=type(self).lock_timeout_sec):
-            raise RuntimeError(f'Could not acquire lock for method {f.__name__} in time.')
+        marker = None
+        priority = 5
+        stamp = datetime.now()
+        if '__queue_priority' in kwargs:
+            priority = kwargs['__queue_priority']
+            del kwargs['__queue_priority']
+        success = False
+        if self.waiting_line.empty() and not self.lock.locked():
+            LOG.debug(f'{self.id} -> {f.__name__} empty access requested')
+            success = self.lock.acquire(timeout=0)
+        if not success:
+            LOG.debug(f'{self.id} -> {f.__name__} must wait')
+            marker = threading.Lock()
+            marker.acquire()  # lock it and put it into the queue
+            self.waiting_line.put(tuple([priority, stamp, marker]))
+            marker.acquire()  # wait for someone else to open it
+            self.lock.acquire(blocking=False)
         try:
+            LOG.debug(f'{self.id} servicing {priority}, {stamp}')
             res = f(self, *args, **kwargs)
             return res
         except Exception as err:
             raise err
         finally:
             try:
+                # if someone is in line, open them up
+                token = self.waiting_line.get(timeout=0)
+                priority, stamp, new_marker = token
+                LOG.debug(f'{self.id} tapping {priority}, {stamp}')
+                new_marker.release()
                 self.lock.release()
-            except RuntimeError:
-                LOG.debug('Tried to release open lock.')
+            except queue.Empty:
+                # if the queue is empty change the sign
+                self.lock.release()
+                LOG.debug(f'{self.id} -> {f.__name__} released to no one')
     return wrapper
 
 
@@ -62,6 +87,7 @@ class BaseResource(object):
     schema: str  # the schema of this resource type as JSONSchema
     validator: Any = None
     lock: threading.Lock
+    waiting_line: queue.PriorityQueue
     lock_timeout_sec: int = 60
 
     @classmethod
@@ -116,12 +142,14 @@ class BaseResource(object):
     def __init__(self, definition):
         # should be validated before initialization
         self.lock = threading.Lock()
+        self.waiting_line = queue.PriorityQueue()
         self.id = definition['id']
         self.definition = definition
 
     @lock
     def update(self, definition):
         self.definition = definition
+        LOG.debug(f'{self.id} got new definition')
         self._on_change()
 
     def _on_change(self):
@@ -159,6 +187,7 @@ class InstanceManager(object):
                 args=(k, ),
                 daemon=True)
             thread.start()
+            yield thread
 
     def _on_init(self):
         pass
@@ -175,6 +204,7 @@ class InstanceManager(object):
         try:
             return self.instances[key]
         except KeyError:
+            LOG.error(f'Expected key missing {key}')
             return None
 
     def update(self, _id, _type, tenant, body):
@@ -185,6 +215,7 @@ class InstanceManager(object):
             thread = threading.Thread(
                 target=self.instances[key].update,
                 args=(body, ),
+                kwargs={'__queue_priority': 0},
                 daemon=True)
             thread.start()
         else:

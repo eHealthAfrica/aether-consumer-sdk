@@ -18,6 +18,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from copy import copy
 from datetime import datetime
 import threading
 
@@ -365,6 +366,7 @@ def test_resource__test_lock():
         target=res.sleepy_lock,
         args=(2,)).start()
     tick = datetime.now()
+    sleep(.002)  # give the thread time to start and get the lock
     res.null('a-key')
     tock = datetime.now()
     diff = tock - tick
@@ -569,33 +571,72 @@ i_job = {
     'poll_interval': 1
 }
 
+tenant = 'test-1'
+_type = 'resource'
+
 
 @pytest.mark.unit
-def test_itest_one_job(IJobManager):
-    _type = 'resource'
-    ten = 'test-1'
-    resources = [
-        {
-            'id': 'a1',
-            'say': 'a',
-            'wait': 1
-        },
-        {
-            'id': 'b1',
-            'say': 'b',
-            'wait': 1
-        },
-        {
-            'id': 'c1',
-            'say': 'c',
-            'wait': 1
-        }
-    ]
-    LOG.debug(IJobManager)
-    for res in resources:
-        IJobManager.task.add(res, _type, ten)
-    IJobManager.task.add(i_job, 'job', ten)
+def test_itest_add_resources(IJobManager):
+    for res in i_resources:
+        IJobManager.task.add(res, _type, tenant)
     sleep(1)
+    _ids = [r.get('id') for r in i_resources]
+    for _id in _ids:
+        assert(any([_id in key for key in IJobManager.resource.instances.keys()]))
+
+
+@pytest.mark.unit
+def test_itest_add_job(IJobManager):
+    _ids = [r.get('id') for r in i_resources]
+    keys = list(IJobManager.resource.instances.keys())
+    for _id in _ids:
+        assert(any([_id in key for key in keys]))
+    LOG.debug(keys)
+    IJobManager.task.add(i_job, 'job', tenant)
+    sleep(1)
+    _id = i_job.get('id')
+    assert(any([_id in key for key in IJobManager.jobs.keys()]))
+
+
+@pytest.mark.unit
+def test_itest_remove_job(IJobManager):
+    _id = i_job.get('id')
+    LOG.debug('removing {_id}')
+    IJobManager.task.remove(_id, 'job', tenant)
+    sleep(2)
+    keys = list(IJobManager.jobs.keys())
+    LOG.debug(keys)
+    assert(not any([_id in key for key in keys]))
+
+
+@pytest.mark.unit
+def test_itest_add_ten_jobs(IJobManager):
+    for x in range(10):
+        _job = copy(i_job)
+        _job['id'] = str(x)
+        LOG.debug(f'add {_job}')
+        IJobManager.task.add(_job, 'job', tenant)
+    sleep(1)
+    keys = [key for key in IJobManager.jobs.keys()]
+    sleep(1)
+    for x in range(10):
+        assert(any([str(x) in key for key in keys]))
+    for job in IJobManager.jobs.values():
+        assert(job.status is JobStatus.NORMAL)
+
+
+@pytest.mark.unit
+def test_itest_modify_resources(IJobManager):
+    new_value = 2
+    for res in i_resources:
+        doc = copy(res)
+        doc['wait'] = new_value
+        IJobManager.task.add(doc, _type, tenant)
+    sleep(2)
+    for job in IJobManager.jobs.values():
+        assert(job.status is JobStatus.NORMAL)
+        value = job.share_resource('a1', 'wait')
+        assert(value == new_value)
 
 
 @pytest.mark.integration

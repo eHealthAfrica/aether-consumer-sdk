@@ -278,18 +278,26 @@ class IJob(BaseJob):
     '''
 
     def _get_messages(self, config):
+        LOG.debug(f'{self._id} gettings messages')
         messages = []
-        resources = self.get_resources('resource')
+        resources = self.get_resources('resource', config)
+        if not resources:
+            raise RuntimeError('No resources!')
         for r in resources:
             val = r.say_wait()  # long running
             if self.status is JobStatus.STOPPED:
                 return []
             messages.append(val)
+        LOG.debug(f'{self._id} returning messages {messages}')
         return messages
 
     def _handle_messages(self, config, messages):
         for m in messages:
             LOG.debug(m)
+
+    def share_resource(self, _id, prop):
+        r = self.get_resource('resource', _id)
+        return r.definition.get(prop)
 
 
 class MockCallable(object):
@@ -369,7 +377,7 @@ def send_avro_messages(producer, topic, schema, messages):
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def IJobManager():
     task = TaskHelper(
         settings.CONSUMER_CONFIG,
@@ -379,13 +387,9 @@ def IJobManager():
     man = JobManager(task, IJob)
     LOG.debug(man.task)
     yield man
-    # sleep(5)
     man.stop()
-    man.task.stop()
+    task.stop()
     sleep(5)
-    print('stopped!')
-    # man.stop()
-    # # man.task.stop()
 
 
 @pytest.mark.unit

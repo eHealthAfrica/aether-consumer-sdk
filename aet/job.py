@@ -117,26 +117,37 @@ class BaseJob(object):
         try:
             c = 0
             while self.status is not JobStatus.STOPPED:
+                LOG.debug(f'{self._id} round {c}')
                 c += 1
                 if c % self.report_interval == 0:
                     LOG.debug(f'thread {self._id} running : {self.status}')
                 if self.status is JobStatus.PAUSED:
-                    sleep(self.sleep_delay)  # wait for the status to change
+                    self.safe_sleep(self.sleep_delay)  # wait for the status to change
                     continue
                 if self.status is JobStatus.RECONFIGURE:
                     # Take the new configuration into account if anything needs to happen
                     # before the work part of the cycles. New DB connection etc.
                     self._handle_new_settings()
-                    LOG.debug(f'Job {self._id} is using a new configuration.')
+                    LOG.debug(f'Job {self._id} is using a new configuration. {self.config}')
                     # Ok, all done and back to normal.
                     self.status = JobStatus.NORMAL
                     continue
                 # Do something useful here
                 # get a deepcopy of config
                 config = deepcopy(self.config)
-                messages = self._get_messages(config)
-                if messages:
-                    self._handle_messages(config, messages)
+                if not config:
+                    LOG.warning(f'{self._id} No config to pass...')
+                    continue
+                else:
+                    LOG.info(f'{self._id} found config')
+                try:
+                    LOG.debug(f'{self._id} -> {self.status}')
+                    messages = self._get_messages(config)
+                    if messages:
+                        self._handle_messages(config, messages)
+                except RuntimeError as rer:
+                    LOG.error(f'{self._id} : {rer}')
+                    self.safe_sleep(10)
             LOG.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
             LOG.critical(f'job {self._id} failed with critical error {fatal}')
@@ -171,12 +182,14 @@ class BaseJob(object):
         # At a minimum should return the running status
         return str(self.status)
 
-    def get_resources(self, _type) -> List[BaseResource]:
+    def get_resources(self, _type, config) -> List[BaseResource]:
         path = type(self)._resources.get(_type, {}).get('job_path')
-        matches = CachedParser.find(path, self.config)
+        matches = CachedParser.find(path, config)
         if not matches:
+            LOG.debug(f'{self._id} found no resources in {matches}, {path} -> {config}')
             return []
         resource_ids = [m.value for m in matches][0]
+        LOG.debug(f'{self._id} found resource ids {resource_ids}')
         resources = []
         for _id in resource_ids:
             res = self.get_resource(_type, _id)
@@ -189,10 +202,17 @@ class BaseJob(object):
     def get_resource(self, _type, _id) -> BaseResource:
         return self.resources.get(_id, _type, self.tenant)
 
+    def safe_sleep(self, dur):
+        for x in range(dur):
+            if self.status == JobStatus.STOPPED:
+                break
+            sleep(1)
+
     def stop(self, *args, **kwargs):
+        # return thread to be observed
+        LOG.info(f'Job {self._id} caught stop signal.')
         self.status = JobStatus.STOPPED
-        self._thread.join()
-        LOG.info(f'Job {self._id} completely stopped')
+        return self._thread
 
 
 class JobManager(object):
@@ -221,10 +241,12 @@ class JobManager(object):
 
     def stop(self, *args, **kwargs):
         LOG.info(f'Stopping jobs')
+        threads = []
         for _id, job in self.jobs.items():
             LOG.debug(f'Stopping job {_id}')
-            job.stop()
-        self.resource.stop()
+            threads.append(job.stop())
+        [t.join() for t in threads]
+        [t.join() for t in self.resource.stop()]
 
     # Job Initialization
 
@@ -276,8 +298,7 @@ class JobManager(object):
     def _remove_job(self, _id: str, tenant: str) -> None:
         job_id = JobManager.get_job_id(_id, tenant)
         LOG.debug(f'removing job: {job_id}')
-        self._stop_job(job_id, tenant)
-        self._remove_resource_listeners(job_id)
+        self._stop_job(_id, tenant)
         del self.jobs[job_id]
 
     # Direct API Driven job control / visibility functions
@@ -362,4 +383,4 @@ class JobManager(object):
         elif isinstance(msg, TaskEvent):
             LOG.debug(f'Consumer received TaskEvent: "{msg}"')
             if msg.event == 'del':
-                self._remove_job(msg.task_id)
+                self._remove_job(msg.task_id, msg.tenant)
