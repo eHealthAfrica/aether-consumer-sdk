@@ -529,7 +529,7 @@ def test_api_post_calls(call, result, body, raises_error, mocked_api):
 
 ######
 #
-#  CONSUMER TESTS
+#  Job Manager Tests
 #
 #####
 
@@ -562,51 +562,75 @@ _type = 'resource'
 
 
 @pytest.mark.unit
-def test_itest_add_resources(IJobManager):
+def test_itest_add_resources(IJobManagerFNScope):
     for res in i_resources:
-        IJobManager.task.add(res, _type, tenant)
+        IJobManagerFNScope.task.add(res, _type, tenant)
     sleep(1)
     _ids = [r.get('id') for r in i_resources]
     for _id in _ids:
-        assert(any([_id in key for key in IJobManager.resource.instances.keys()]))
+        assert(any([_id in key for key in IJobManagerFNScope.resources.instances.keys()]))
 
 
 @pytest.mark.unit
-def test_itest_add_job(IJobManager):
+def test_itest_reinit_resources_add_job(IJobManagerFNScope):
     _ids = [r.get('id') for r in i_resources]
-    keys = list(IJobManager.resource.instances.keys())
+    keys = list(IJobManagerFNScope.resources.instances.keys())
     for _id in _ids:
         assert(any([_id in key for key in keys]))
-    LOG.debug(keys)
-    IJobManager.task.add(i_job, 'job', tenant)
+    IJobManagerFNScope.task.add(i_job, 'job', tenant)
     sleep(1)
+    _id = i_job.get('id')
+    assert(any([_id in key for key in IJobManagerFNScope.jobs.keys()]))
+
+
+@pytest.mark.unit
+def test_all_artifacts_survive_restart(IJobManager):
+    sleep(5)
+    _ids = [r.get('id') for r in i_resources]
+    keys = list(IJobManager.resources.instances.keys())
+    for _id in _ids:
+        assert(any([_id in key for key in keys]))
     _id = i_job.get('id')
     assert(any([_id in key for key in IJobManager.jobs.keys()]))
 
 
 @pytest.mark.unit
+def test_itest_modify_job(IJobManager):
+    new_def = copy(i_job)
+    new_def['poll_interval'] = 2
+    IJobManager.task.add(new_def, 'job', tenant)
+    sleep(1)
+    _id = i_job.get('id')
+    key = [key for key in IJobManager.jobs.keys() if _id in key][0]
+    job = IJobManager.jobs[key]
+    assert(job.config.get('poll_interval') == 2)
+
+
+@pytest.mark.unit
 def test_itest_remove_job(IJobManager):
     _id = i_job.get('id')
-    LOG.debug('removing {_id}')
     IJobManager.task.remove(_id, 'job', tenant)
-    sleep(2)
+    sleep(1)
     keys = list(IJobManager.jobs.keys())
-    LOG.debug(keys)
     assert(not any([_id in key for key in keys]))
 
 
 @pytest.mark.unit
 def test_itest_add_ten_jobs(IJobManager):
+    assert(IJobManager.task is not None)
+    names = []
     for x in range(10):
+        name = f'job-{x}'
         _job = copy(i_job)
-        _job['id'] = str(x)
-        LOG.debug(f'add {_job}')
-        IJobManager.task.add(_job, 'job', tenant)
+        _job['id'] = name
+        # del _job['modified']
+        names.append(name)
+        res = IJobManager.task.add(_job, 'job', tenant)
     sleep(1)
-    keys = [key for key in IJobManager.jobs.keys()]
-    sleep(1)
-    for x in range(10):
-        assert(any([str(x) in key for key in keys]))
+    _ids = IJobManager.list_jobs(tenant)
+    LOG.debug(_ids)
+    for name in names:
+        assert(name in _ids)
     for job in IJobManager.jobs.values():
         assert(job.status is JobStatus.NORMAL)
 

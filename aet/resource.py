@@ -53,15 +53,14 @@ def lock(f):
         while marker.locked() and not self._stopped:
             sleep(.01)
         if self._stopped:
-            LOG.debug('Releasing resource request on stop')
             marker.release()
-            return
+            raise RuntimeError('Resource Stopped before action could be completed.')
         # mark the resource as used
         self.lock.acquire(blocking=False)
         marker = None
 
         try:
-            LOG.debug(f'{self.id} servicing {priority}, {stamp} ?{self._stopped}')
+            LOG.debug(f'{self.id} servicing {priority}, {stamp}')
             res = f(self, *args, **kwargs)
             return res
         except Exception as err:
@@ -81,7 +80,7 @@ class BaseResource(object):
         'validate': '_validate_pretty'
     }
     public_actions: List[str]  # public interfaces for this type
-    schema: str  # the schema of this resource type as JSONSchema
+    schema: str = None  # the schema of this resource type as JSONSchema
     validator: Any = None
     lock: threading.Lock
     waiting_line: queue.PriorityQueue
@@ -147,12 +146,20 @@ class BaseResource(object):
         self.waiting_line = queue.PriorityQueue()
         self.id = definition['id']
         self.definition = definition
+        self._on_init()
+
+    def _on_init(self):
+        pass
 
     @lock
     def update(self, definition):
         self.definition = definition
         LOG.debug(f'{self.id} got new definition')
         self._on_change()
+
+    def _on_delete(self):
+        self._stopped = True
+        pass
 
     def _on_change(self):
         '''
@@ -165,6 +172,10 @@ class BaseResource(object):
         Handles stop call before removal
         '''
         self._stopped = True
+        self._on_stop()
+
+    def _on_stop(self):
+        pass
 
 
 class InstanceManager(object):
@@ -181,6 +192,7 @@ class InstanceManager(object):
             target=self.__delegate,
             daemon=True)
         thread.start()
+        LOG.debug('Instance Manager started')
 
     def __delegate(self):
         while not self._stopped:
@@ -218,9 +230,6 @@ class InstanceManager(object):
             thread.start()
             yield thread
 
-    def _on_init(self):
-        pass
-
     def exists(self, _id, _type, tenant):
         key = self.format(_id, _type, tenant)
         return key in self.instances
@@ -233,7 +242,7 @@ class InstanceManager(object):
         try:
             return self.instances[key]
         except KeyError:
-            LOG.error(f'Expected key missing {key}')
+            LOG.warning(f'Expected key missing {key} : {list(self.instances.keys())}')
             return None
 
     def update(self, _id, _type, tenant, body):
@@ -249,6 +258,7 @@ class InstanceManager(object):
             thread.start()
         else:
             self.instances[key] = _cls(body)
+            LOG.debug(f'Created new instance of {key}, now: {list(self.instances.keys())}')
 
     def dispatch(self, tenant=None, _type=None, operation=None, request=None):
         pass
@@ -259,6 +269,7 @@ class InstanceManager(object):
     def remove(self, _id, _type, tenant):
         key = self.format(_id, _type, tenant)
         if key in self.instances:
+            self.instances[key]._on_delete()
             thread = threading.Thread(
                 target=self.__remove_on_unlock,
                 args=(key, ),

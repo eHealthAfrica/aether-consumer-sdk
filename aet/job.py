@@ -74,7 +74,7 @@ class BaseJob(object):
     # join timeout for the worker thread
     shutdown_grace_period: int = 5
     # the configuration schema for instances of this job
-    schema: str  # jsonschema for job instructions
+    schema: str = None  # jsonschema for job instructions
     tenant: str  # tenant for this job
     validator: Any = None  # jsonschema validation object
 
@@ -218,7 +218,7 @@ class BaseJob(object):
 
 class JobManager(object):
 
-    jobs: Dict[str, BaseJob] = {}
+    jobs: Dict[str, BaseJob]
     resources: InstanceManager
     task: TaskHelper
     job_class: Callable
@@ -234,9 +234,11 @@ class JobManager(object):
     # Start / Stop
 
     def __init__(self, task_master: TaskHelper, job_class: Callable = BaseJob):
+        self.jobs = {}
         self.task = task_master
         self.job_class = job_class  # type: ignore
-        self.resource = InstanceManager(self.job_class._resources)
+        self.resources = InstanceManager(self.job_class._resources)
+        self._init_resources()
         self._init_jobs()
         LOG.debug('JobManager Ready')
 
@@ -247,20 +249,28 @@ class JobManager(object):
         LOG.info('Stopping Job Threads...')
         [t.join() for t in threads]
         LOG.info('Stopping Resources...')
-        [t.join() for t in self.resource.stop()]
+        [t.join() for t in self.resources.stop()]
 
     # Job Initialization
 
     def _init_jobs(self):
         jobs = list(self.task.list(self.job_class._job_redis_type))
-
-        LOG.debug(f'jobs: {jobs}')
         for job in jobs:
-            tenant, _type, _id = job.split(':')
+            tenant, _id = job.split(':')
             job: Dict = self.task.get(_id, type=self.job_class._job_redis_type, tenant=tenant)
             LOG.debug(f'init job: {job}')
-            self._init_job(job)
+            self._init_job(job, tenant)
         self.listen_for_job_change()
+
+    def _init_resources(self):
+        resources = self.job_class._resources
+        for _type, rule in resources.items():
+            _type = rule['redis_type']
+            keys = [k.split(':') for k in self.task.list(_type)]
+            for tenant, _id in keys:
+                LOG.debug(f'Init resource: {tenant}:{_id}')
+                body = self.task.get(_id, _type, tenant)
+                self.resources.update(_id, _type, tenant, body)
         self.listen_for_resource_change()
 
     # Job Management, driven by Redis or other Indirect Events (Startup/ shutdown etc)
@@ -275,32 +285,49 @@ class JobManager(object):
         _id = JobManager.get_job_id(job, tenant)
         if _id in self.jobs.keys():
             LOG.debug(f'Job {_id} exists, updating')
-            self._configure_job(job, tenant)
+            self.jobs[_id].set_config(job)
         else:
-            self._start_job(job, tenant)
+            LOG.debug(f'Creating new job {_id}')
+            self.jobs[_id] = self.job_class(_id, tenant, self.resources)
+            self.jobs[_id].set_config(job)
 
-    def _start_job(
-        self,
-        job: Dict[str, Any],
-        tenant: str
-    ) -> None:
-        # Start a new job
-        LOG.debug(f'starting job: {job}')
-        _id = JobManager.get_job_id(job, tenant)
-        self.jobs[_id] = self.job_class(_id, tenant, self.resource)
-        self.jobs[_id].set_config(job)
+    # def _start_job(
+    #     self,
+    #     job: Dict[str, Any],
+    #     tenant: str
+    # ) -> None:
+    #     # Start a new job
+    #     LOG.debug(f'starting job: {job}')
+    #     _id = JobManager.get_job_id(job, tenant)
+    #     self.jobs[_id] = self.job_class(_id, tenant, self.resources)
+    #     self.jobs[_id].set_config(job)
+
+    # def _update_job(
+    #     self,
+    #     job: Dict[str, Any],
+    #     tenant: str
+    # ) -> None:
+    #     # Start a new job
+    #     LOG.debug(f'updating job: {job}')
+    #     _id = JobManager.get_job_id(job, tenant)
+    #     self.jobs[_id].set_config(job)
+
+    def list_jobs(self, tenant: str):
+        job_ids = list(self.jobs.keys())
+        return [_id.split(':')[1] for _id in job_ids]
 
     def _stop_job(self, _id: str, tenant: str) -> None:
         job_id = JobManager.get_job_id(_id, tenant)
         LOG.debug(f'stopping job: {job_id}')
-        if job_id in self.jobs:
+        job_ids = list(self.jobs.keys())
+        if job_id in job_ids:
             self.jobs[job_id].stop()
+            del self.jobs[job_id]
 
     def _remove_job(self, _id: str, tenant: str) -> None:
         job_id = JobManager.get_job_id(_id, tenant)
         LOG.debug(f'removing job: {job_id}')
         self._stop_job(_id, tenant)
-        del self.jobs[job_id]
 
     # Direct API Driven job control / visibility functions
 
@@ -332,7 +359,7 @@ class JobManager(object):
             return f'no job with id:{job_id}'
 
     def dispatch_resource_call(self, tenant=None, _type=None, operation=None, request=None):
-        return self.resource.dispatch(tenant, _type, operation, request)
+        return self.resources.dispatch(tenant, _type, operation, request)
 
     #############
     #
@@ -356,22 +383,12 @@ class JobManager(object):
             # use a partial to keep from having to inspect the message source later
             self.task.subscribe(self.on_resource_change, redis_path, True)
 
-    def initialize_resources(self):
-        resources = self.job_class._resources
-        for _type, rule in resources.items():
-            _type = rule['redis_type']
-            keys = [k.split(':') for k in self.task.list(_type)]
-            for tenant, _id in keys:
-                LOG.debug(f'Init resource: {tenant}:{_id}')
-                body = self.task.get(_id, tenant, _type)
-                self.resource.update(_id, _type, tenant, body)
-
     # generic handler called on change of any resource. Dispatched to dependent jobs
     def on_resource_change(
         self,
         msg: Union[Task, TaskEvent]
     ) -> None:
-        self.resource.on_resource_change(msg)
+        self.resources.on_resource_change(msg)
 
     # generic job change listener then dispatched to the proper job / creates new job
     def on_job_change(self, msg: Union[Task, TaskEvent]) -> None:

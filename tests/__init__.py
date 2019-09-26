@@ -378,18 +378,34 @@ def send_avro_messages(producer, topic, schema, messages):
 
 @pytest.mark.unit
 @pytest.fixture(scope="session")
-def IJobManager():
+def TaskHelperSessionScope():
     task = TaskHelper(
         settings.CONSUMER_CONFIG,
         get_fakeredis()
     )
-    assert(task is not None)
-    man = JobManager(task, IJob)
-    LOG.debug(man.task)
-    yield man
-    man.stop()
+    yield task
+    LOG.warning('Destroying FakeRedis')
     task.stop()
-    sleep(5)
+
+
+@pytest.mark.unit
+@pytest.fixture(scope="session")
+def IJobManager(TaskHelperSessionScope):
+    task = TaskHelperSessionScope
+    man = JobManager(task, IJob)
+    yield man
+    LOG.warning('destroying IMAN')
+    man.stop()
+
+
+@pytest.mark.unit
+@pytest.fixture(scope="function")
+def IJobManagerFNScope(TaskHelperSessionScope):
+    task = TaskHelperSessionScope
+    man = JobManager(task, IJob)
+    yield man
+    LOG.warning('destroying IMAN fn scope')
+    man.stop()
 
 
 @pytest.mark.unit
@@ -593,23 +609,6 @@ def mocked_consumer():
     consumer.stop()
     sleep(.5)
 
-
-# @pytest.mark.integration
-# @pytest.fixture(scope="module")
-# def consumer() -> Iterable[BaseConsumer]:
-#     # mock API from unit tests not shutdown until end avoid it's port and name
-#     os.environ['CONSUMER_NAME'] = 'BaseConsumer'
-#     os.environ['EXPOSE_PORT'] = '9014'
-#     _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
-#     _consumer.schemas = {'resource': {}, 'job': {}}  # blank schemas
-#     sleep(1)
-#     yield _consumer
-#     # teardown
-#     LOG.debug('Fixture consumer complete, stopping.')
-#     _consumer.stop()
-#     sleep(.5)
-
-
 # API Assets
 @pytest.mark.unit
 @pytest.fixture(scope="module")
@@ -625,14 +624,3 @@ def mocked_api(mocked_consumer) -> Iterable[APIServer]:
     LOG.debug('Fixture api complete, stopping.')
     api.stop()
     sleep(.5)
-
-
-# # TaskHelper Assets
-# @pytest.mark.integration
-# @pytest.fixture(scope="module")
-# def task_helper() -> Iterable[TaskHelper]:
-#     helper = TaskHelper(settings.CONSUMER_CONFIG)
-#     yield helper
-#     LOG.debug('Fixture task_helper complete, stopping.')
-#     helper.stop()
-#     sleep(.5)
