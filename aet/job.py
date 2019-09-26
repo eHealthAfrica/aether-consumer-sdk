@@ -291,43 +291,17 @@ class JobManager(object):
             self.jobs[_id] = self.job_class(_id, tenant, self.resources)
             self.jobs[_id].set_config(job)
 
-    # def _start_job(
-    #     self,
-    #     job: Dict[str, Any],
-    #     tenant: str
-    # ) -> None:
-    #     # Start a new job
-    #     LOG.debug(f'starting job: {job}')
-    #     _id = JobManager.get_job_id(job, tenant)
-    #     self.jobs[_id] = self.job_class(_id, tenant, self.resources)
-    #     self.jobs[_id].set_config(job)
-
-    # def _update_job(
-    #     self,
-    #     job: Dict[str, Any],
-    #     tenant: str
-    # ) -> None:
-    #     # Start a new job
-    #     LOG.debug(f'updating job: {job}')
-    #     _id = JobManager.get_job_id(job, tenant)
-    #     self.jobs[_id].set_config(job)
-
     def list_jobs(self, tenant: str):
         job_ids = list(self.jobs.keys())
         return [_id.split(':')[1] for _id in job_ids]
 
-    def _stop_job(self, _id: str, tenant: str) -> None:
+    def remove_job(self, _id: str, tenant: str) -> None:
         job_id = JobManager.get_job_id(_id, tenant)
-        LOG.debug(f'stopping job: {job_id}')
+        LOG.debug(f'removing job: {job_id}')
         job_ids = list(self.jobs.keys())
         if job_id in job_ids:
             self.jobs[job_id].stop()
             del self.jobs[job_id]
-
-    def _remove_job(self, _id: str, tenant: str) -> None:
-        job_id = JobManager.get_job_id(_id, tenant)
-        LOG.debug(f'removing job: {job_id}')
-        self._stop_job(_id, tenant)
 
     # Direct API Driven job control / visibility functions
 
@@ -343,7 +317,7 @@ class JobManager(object):
 
     def resume_job(self, _id: str, tenant: str) -> bool:
         job_id = JobManager.get_job_id(_id, tenant)
-        LOG.debug(f'pausing job: {job_id}')
+        LOG.debug(f'resuming job: {job_id}')
         if job_id in self.jobs:
             self.jobs[job_id].status = JobStatus.NORMAL
             return True
@@ -401,4 +375,4 @@ class JobManager(object):
         elif isinstance(msg, TaskEvent):
             LOG.debug(f'Consumer received TaskEvent: "{msg}"')
             if msg.event == 'del':
-                self._remove_job(msg.task_id, msg.tenant)
+                self.remove_job(msg.task_id, msg.tenant)

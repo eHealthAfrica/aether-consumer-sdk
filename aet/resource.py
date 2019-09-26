@@ -222,7 +222,6 @@ class InstanceManager(object):
         keys = list(self.instances.keys())
         for k in keys:
             LOG.debug(f'Stopping {k}')
-            # self.__remove_on_unlock(k)
             thread = threading.Thread(
                 target=self.__remove_on_unlock,
                 args=(k, ),
@@ -268,6 +267,7 @@ class InstanceManager(object):
 
     def remove(self, _id, _type, tenant):
         key = self.format(_id, _type, tenant)
+        LOG.debug(f'removing resource {key}')
         if key in self.instances:
             self.instances[key]._on_delete()
             thread = threading.Thread(
@@ -275,6 +275,8 @@ class InstanceManager(object):
                 args=(key, ),
                 daemon=True)
             thread.start()
+        else:
+            LOG.error(f'Cannot remove resource with key {key} -- {list(self.instances.keys())}')
         return True
 
     def __remove_on_unlock(self, key):
@@ -283,20 +285,20 @@ class InstanceManager(object):
             obj.stop()
             # safe to delete
             del self.instances[key]
+            LOG.debug(f'{key} removed')
         except KeyError:
-            pass
+            LOG.error(f'KE on {key}')
 
     def on_resource_change(self, msg: Union[Task, TaskEvent]) -> None:
         if isinstance(msg, Task):
             LOG.debug(f'Received Task: "{msg.type}" on job: {msg.id}')
             _type = '_'.join(msg.type.split('_')[1:])
             _id = msg.id
-            # _type = msg.type
             body = msg.data
-            LOG.info(body)
             tenant = msg.tenant
             self.update(_id, _type, tenant, body)
         elif isinstance(msg, TaskEvent):
             LOG.debug(f'Received TaskEvent: "{msg}"')
             if msg.event == 'del':
-                self.remove(msg.task_id, msg.type, msg.tenant)
+                _type = '_'.join(msg.type.split('_')[1:])
+                self.remove(msg.task_id, _type, msg.tenant)

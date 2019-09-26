@@ -572,6 +572,24 @@ def test_itest_add_resources(IJobManagerFNScope):
 
 
 @pytest.mark.unit
+def test_itest_remove__readd_resources(IJobManagerFNScope):
+    # remove the resources
+    for res in i_resources:
+        _id = res.get('id')
+        IJobManagerFNScope.task.remove(_id, _type, tenant)
+    sleep(1)
+    _ids = list(IJobManagerFNScope.resources.instances.keys())
+    assert(len(_ids) == 0)
+    # add them again
+    for res in i_resources:
+        IJobManagerFNScope.task.add(res, _type, tenant)
+    sleep(1)
+    _ids = [r.get('id') for r in i_resources]
+    for _id in _ids:
+        assert(any([_id in key for key in IJobManagerFNScope.resources.instances.keys()]))
+
+
+@pytest.mark.unit
 def test_itest_reinit_resources_add_job(IJobManagerFNScope):
     _ids = [r.get('id') for r in i_resources]
     keys = list(IJobManagerFNScope.resources.instances.keys())
@@ -581,6 +599,20 @@ def test_itest_reinit_resources_add_job(IJobManagerFNScope):
     sleep(1)
     _id = i_job.get('id')
     assert(any([_id in key for key in IJobManagerFNScope.jobs.keys()]))
+
+
+@pytest.mark.unit
+def test_itest_reinit_all_control_job(IJobManagerFNScope):
+    _id = 'job-id'
+    key = f'{tenant}:{_id}'
+    man = IJobManagerFNScope
+    job = man.jobs[key]
+    man.pause_job(_id, tenant)
+    assert(job.status == JobStatus.PAUSED)
+    man.resume_job(_id, tenant)
+    assert(job.status == JobStatus.NORMAL)
+    res = man.get_job_status(_id, tenant)
+    assert(res is not None)
 
 
 @pytest.mark.unit
@@ -623,9 +655,8 @@ def test_itest_add_ten_jobs(IJobManager):
         name = f'job-{x}'
         _job = copy(i_job)
         _job['id'] = name
-        # del _job['modified']
         names.append(name)
-        res = IJobManager.task.add(_job, 'job', tenant)
+        IJobManager.task.add(_job, 'job', tenant)
     sleep(1)
     _ids = IJobManager.list_jobs(tenant)
     LOG.debug(_ids)
