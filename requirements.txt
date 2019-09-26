@@ -4,12 +4,12 @@
 #                                                                              #
 ################################################################################
 
+aether.python==1.0.11
 confluent_kafka
 flask
 jsonpath_ng
 jsonschema
 kafka-python
-redis
 requests
 spavro
 webtest
@@ -17,6 +17,7 @@ webtest
 
 # Test libraries
 
+birdisle
 flake8
 pytest
 pytest-cov

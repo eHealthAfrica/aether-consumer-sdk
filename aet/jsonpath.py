@@ -21,7 +21,9 @@
 from typing import ClassVar
 
 from jsonpath_ng.ext import parse as jsonpath_ng_ext_parse
-from .logger import LOG
+from .logger import get_logger
+
+LOG = get_logger('Json')
 
 
 class CachedParser(object):

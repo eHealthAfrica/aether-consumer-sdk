@@ -18,15 +18,18 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import birdisle.redis
 from copy import deepcopy
 import io
 import json
 import os
 import pytest
 from time import sleep
-from typing import ClassVar, List, Iterable, Optional  # noqa
+from typing import Any, ClassVar, Dict, List, Iterable, Optional  # noqa
 from unittest import mock
 from uuid import uuid4
+
+from aether.python.redis.task import Task, TaskHelper
 
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
@@ -38,12 +41,16 @@ from spavro.schema import parse as ParseSchema
 from aet import settings
 from aet.api import APIServer
 from aet.consumer import BaseConsumer
+from aet.job import BaseJob, JobManager, JobStatus
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
-from aet.logger import LOG
-from aet.task import TaskHelper, Task
+from aet.logger import get_logger
+from aet.resource import BaseResource, lock
+
 
 from .assets.schemas import test_schemas
+
+LOG = get_logger('Test')
 
 here = os.path.dirname(os.path.realpath(__file__))
 
@@ -55,6 +62,244 @@ kafka_connection_retry_wait = 6
 topic_size = 500
 
 
+TestResourceDef1 = {'id': '1', 'username': 'user', 'password': 'pw'}
+
+
+class TestResource(BaseResource):
+
+    public_actions = [
+        'upper',
+        'null'
+    ]
+
+    schema = '''
+    {
+      "definitions": {},
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "http://example.com/root.json",
+      "type": "object",
+      "title": "The Root Schema",
+      "required": [
+        "username",
+        "password"
+      ],
+      "properties": {
+        "id": {
+          "$id": "#/properties/id",
+          "type": "string",
+          "title": "The ID Schema",
+          "default": "",
+          "examples": [
+            "someid"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "username": {
+          "$id": "#/properties/username",
+          "type": "string",
+          "title": "The Username Schema",
+          "default": "",
+          "examples": [
+            "shawn"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "password": {
+          "$id": "#/properties/password",
+          "type": "string",
+          "title": "The Password Schema",
+          "default": "",
+          "examples": [
+            "password"
+          ],
+          "pattern": "^(.*)$"
+        }
+      }
+    }
+    '''
+
+    def upper(self, key: str):
+        '''
+            Returns the uppercase version of the requested key
+            OR None if the key is not found
+        '''
+        try:
+            return self.definition.get(key).upper()
+        except Exception:
+            return None
+
+    @lock
+    def null(self, key: str):
+        '''
+            Returns None, always
+        '''
+        LOG.debug('Null.')
+        return None
+
+    @lock
+    def sleepy_lock(self, dur):
+        sleep(dur)
+        LOG.debug('Wake up.')
+
+
+class TestJob(BaseJob):
+    schema = '''
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+    '''
+
+
+class IResource(BaseResource):
+
+    public_actions = [
+        'say_wait'
+    ]
+
+    schema = '''
+    {
+      "definitions": {},
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "http://example.com/root.json",
+      "type": "object",
+      "title": "The Root Schema",
+      "required": [
+        "id",
+        "say",
+        "wait"
+      ],
+      "properties": {
+        "id": {
+          "$id": "#/properties/id",
+          "type": "string",
+          "title": "The Id Schema",
+          "default": "",
+          "examples": [
+            "an-id"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "say": {
+          "$id": "#/properties/say",
+          "type": "string",
+          "title": "The Say Schema",
+          "default": "",
+          "examples": [
+            "something"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "wait": {
+          "$id": "#/properties/wait",
+          "type": "integer",
+          "title": "The Wait Schema",
+          "default": 0,
+          "examples": [
+            1
+          ]
+        }
+      }
+    }
+    '''
+
+    @lock
+    def say_wait(self):
+        sleep(int(self.definition.get('wait')))
+        return self.definition.get('say')
+
+    def say(self):
+        return self.definition.get('say')
+
+
+class IJob(BaseJob):
+
+    _resources: ClassVar[dict] = {
+        'resource': {
+            'redis_type': 'resource',
+            'redis_name': '_resource:',
+            'redis_path': '_resource:*',  # Where to subscribe for this type in Redis
+            'job_path': '$.resources',  # Where to find the resource reference in the job
+            'class': IResource       # Subclass of BaseResource
+        }
+    }
+
+    schema = '''
+    {
+      "definitions": {},
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "http://example.com/root.json",
+      "type": "object",
+      "title": "The Root Schema",
+      "required": [
+        "id",
+        "resources",
+        "poll_interval"
+      ],
+      "properties": {
+        "id": {
+          "$id": "#/properties/id",
+          "type": "string",
+          "title": "The Id Schema",
+          "default": "",
+          "examples": [
+            "an-id"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "resources": {
+          "$id": "#/properties/resources",
+          "type": "array",
+          "title": "The Resources Schema",
+          "items": {
+            "$id": "#/properties/resources/items",
+            "type": "string",
+            "title": "The Items Schema",
+            "default": "",
+            "examples": [
+              "a",
+              "b"
+            ],
+            "pattern": "^(.*)$"
+          }
+        },
+        "poll_interval": {
+          "$id": "#/properties/poll_interval",
+          "type": "integer",
+          "title": "The Poll_interval Schema",
+          "default": 0,
+          "examples": [
+            1
+          ]
+        }
+      }
+    }
+    '''
+
+    def _get_messages(self, config):
+        LOG.debug(f'{self._id} gettings messages')
+        messages = []
+        resources = self.get_resources('resource', config)
+        if not resources:
+            raise RuntimeError('No resources!')
+        for r in resources:
+            val = r.say_wait()  # long running
+            if self.status is JobStatus.STOPPED:
+                return []
+            messages.append(val)
+        LOG.debug(f'{self._id} returning messages {messages}')
+        return messages
+
+    def _handle_messages(self, config, messages):
+        for m in messages:
+            LOG.debug(m)
+
+    def share_resource(self, _id, prop):
+        r = self.get_resource('resource', _id)
+        return r.definition.get(prop)
+
+
 class MockCallable(object):
     value: Optional[Task] = None
 
@@ -63,52 +308,29 @@ class MockCallable(object):
         self.value = msg
 
 
-class MockTaskHelper(object):
-
-    def __init__(self):
-        pass
-
-    def add(self, task, type):
-        return True
-
-    def exists(self, _id, type):
-        return True
-
-    def remove(self, _id, type):
-        return True
-
-    def get(self, _id, type):
-        return '{}'
-
-    def list(self, type=None):
-        return []
+def get_fakeredis():
+    birdisle.redis.LocalSocketConnection.health_check_interval = 0
+    redis_instance = birdisle.redis.StrictRedis()
+    # set keyspace notifications as we do in live
+    redis_instance.config_set('notify-keyspace-events', 'KEA')
+    return redis_instance
 
 
 class MockConsumer(BaseConsumer):
 
-    PERMISSIVE_SCHEMA: ClassVar[dict] = {  # should match anything
-        'type': 'object',
-        'additionalProperties': True,
-        'properties': {
-        }
-    }
-
-    STRICT_SCHEMA: ClassVar[dict] = {  # should match nothing but empty brackets -> {}
-        'type': 'object',
-        'additionalProperties': False,
-        'properties': {
-        }
+    _classes: ClassVar[Dict[str, Any]] = {
+        'resource': TestResource,
+        'job': TestJob
     }
 
     def __init__(self, CON_CONF, KAFKA_CONF):
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         self.children = []
-        self.task = MockTaskHelper()
-        self.schemas = {
-            'job': MockConsumer.STRICT_SCHEMA,
-            'resource': MockConsumer.STRICT_SCHEMA
-        }
+        self.task = TaskHelper(
+            self.consumer_settings,
+            get_fakeredis()
+        )
 
     def pause(self, *args, **kwargs) -> bool:
         return True
@@ -152,6 +374,38 @@ def send_avro_messages(producer, topic, schema, messages):
     if not record_metadata:
         pass  # we may want to check the metadata in the future
     producer.flush()
+
+
+@pytest.mark.unit
+@pytest.fixture(scope="session")
+def TaskHelperSessionScope():
+    task = TaskHelper(
+        settings.CONSUMER_CONFIG,
+        get_fakeredis()
+    )
+    yield task
+    LOG.warning('Destroying FakeRedis')
+    task.stop()
+
+
+@pytest.mark.unit
+@pytest.fixture(scope="session")
+def IJobManager(TaskHelperSessionScope):
+    task = TaskHelperSessionScope
+    man = JobManager(task, IJob)
+    yield man
+    LOG.warning('destroying IMAN')
+    man.stop()
+
+
+@pytest.mark.unit
+@pytest.fixture(scope="function")
+def IJobManagerFNScope(TaskHelperSessionScope):
+    task = TaskHelperSessionScope
+    man = JobManager(task, IJob)
+    yield man
+    LOG.warning('destroying IMAN fn scope')
+    man.stop()
 
 
 @pytest.mark.unit
@@ -355,23 +609,6 @@ def mocked_consumer():
     consumer.stop()
     sleep(.5)
 
-
-@pytest.mark.integration
-@pytest.fixture(scope="module")
-def consumer() -> Iterable[BaseConsumer]:
-    # mock API from unit tests not shutdown until end avoid it's port and name
-    os.environ['CONSUMER_NAME'] = 'BaseConsumer'
-    os.environ['EXPOSE_PORT'] = '9014'
-    _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
-    _consumer.schemas = {'resource': {}, 'job': {}}  # blank schemas
-    sleep(1)
-    yield _consumer
-    # teardown
-    LOG.debug('Fixture consumer complete, stopping.')
-    _consumer.stop()
-    sleep(.5)
-
-
 # API Assets
 @pytest.mark.unit
 @pytest.fixture(scope="module")
@@ -386,15 +623,4 @@ def mocked_api(mocked_consumer) -> Iterable[APIServer]:
     # teardown
     LOG.debug('Fixture api complete, stopping.')
     api.stop()
-    sleep(.5)
-
-
-# TaskHelper Assets
-@pytest.mark.integration
-@pytest.fixture(scope="module")
-def task_helper() -> Iterable[TaskHelper]:
-    helper = TaskHelper(settings.CONSUMER_CONFIG)
-    yield helper
-    LOG.debug('Fixture task_helper complete, stopping.')
-    helper.stop()
     sleep(.5)

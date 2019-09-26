@@ -18,33 +18,58 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import json
-import jsonschema
 from time import sleep
-from typing import Any, Dict, List, Union
+from typing import Any, ClassVar, Dict, List, Union
+
+from aether.python.redis.task import TaskHelper
+import redis
 
 from .api import APIServer
-from .logger import LOG
-from .task import TaskHelper
+from .logger import get_logger
 from .job import JobManager, BaseJob
+from .resource import BaseResource
 from .settings import Settings
+
+LOG = get_logger('Consumer')
 
 EXCLUDED_TOPICS = ['__confluent.support.metrics']
 
 
 class BaseConsumer(object):
 
+    # classes used by this consumer
+    _classes: ClassVar[Dict[str, Any]] = {
+        'resource': BaseResource,
+        'job': BaseJob
+    }
+
     api: APIServer
     consumer_settings: Settings
     kafka_settings: Settings
     job_manager: JobManager
-    schemas: Dict[str, Any] = {}
     task: TaskHelper
 
-    def __init__(self, CON_CONF, KAFKA_CONF):
+    @classmethod
+    def get_redis(cls, settings):
+        return redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            password=settings.REDIS_PASSWORD,
+            db=settings.REDIS_DB,
+            encoding='utf-8',
+            decode_responses=False
+        )
+        pass
+
+    def __init__(self, CON_CONF, KAFKA_CONF, redis_instance=None):
+
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
-        self.task = TaskHelper(self.consumer_settings)
+        if not redis_instance:
+            redis_instance = type(self).get_redis(CON_CONF)
+        self.task = TaskHelper(
+            self.consumer_settings,
+            redis_instance=redis_instance)
         self.job_manager = JobManager(self.task, job_class=BaseJob)
         self.serve_api(self.consumer_settings)
 
@@ -65,22 +90,15 @@ class BaseConsumer(object):
         sleep(.25)
         LOG.info('Shutdown Complete')
 
-    def load_schema(self, path=None):
-        path = path if path else self.consumer_settings.get('schema_path')
-        if not path:
-            raise AttributeError('No schema path available for validations.')
-        with open(path) as f:
-            return json.load(f)
-
     # Job API Functions that aren't pure delegation to Redis
 
-    def pause(self, _id: str) -> bool:
+    def pause(self, _id: str, tenant: str = None) -> bool:
         return self.job_manager.pause_job(_id)
 
-    def resume(self, _id) -> bool:
+    def resume(self, _id, tenant: str = None) -> bool:
         return self.job_manager.resume_job(_id)
 
-    def status(self, _id: Union[str, List[str]]) -> List:
+    def status(self, _id: Union[str, List[str]], tenant: str = None) -> List:
         if isinstance(_id, str):
             return [self.job_manager.get_job_status(_id)]
         else:
@@ -88,11 +106,20 @@ class BaseConsumer(object):
 
     # Generic API Functions that aren't pure delegation to Redis
 
-    def validate(self, job, _type=None, schema=None):
-        schema = schema if schema else self.schemas.get(_type, {})
-        try:
-            jsonschema.validate(job, schema)  # Throws ValidationErrors
-            return True
-        except jsonschema.exceptions.ValidationError as err:
-            LOG.debug(err)
-            return False
+    def validate(self, job, _type=None, verbose=False, tenant=None):
+        # consumer the tenant argument only because other methods need it
+        _cls = type(self)._classes.get(_type)
+        if not _cls:
+            return {'error': f'un-handled type: {_type}'}
+        if verbose:
+            return _cls._validate_pretty(job)
+        else:
+            return _cls._validate(job)
+
+    def dispatch(self, tenant=None, _type=None, operation=None, request=None):
+        return self.job_manager.dispatch_resource_call(
+            tenant,
+            _type,
+            operation,
+            request
+        )

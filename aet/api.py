@@ -26,12 +26,18 @@ from typing import ClassVar, Dict, List, TYPE_CHECKING, Union
 from flask import Flask, Request, Response, request, jsonify
 from webtest.http import StopableWSGIServer
 
-from .logger import LOG
+from .logger import get_logger
+from .settings import CONSUMER_CONFIG
+
+LOG = get_logger('API')
 
 if TYPE_CHECKING:  # pragma: no cover
     from .consumer import BaseConsumer
-    from .task import TaskHelper
+    from aether.python.redis.task import TaskHelper
     from .settings import Settings
+
+
+DEFAULT_TENANT = CONSUMER_CONFIG.get('DEFAULT_TENANT', 'no-tenant')
 
 
 class APIServer(object):
@@ -108,17 +114,25 @@ class APIServer(object):
     #   Also restricts which methods are allowed in a type
     #   Set in Class._allowed_types
 
-    def restrict_types(operation):  # TODO # Can't get this typed properly
+    def restrict_types(operation=None):  # TODO # Can't get this typed properly
         def decorator(f):
             @wraps(f)
             def decorated(self, *args, **kwargs):
                 _type = kwargs.get('_type')
-                kwargs['operation'] = operation
+                if operation is not None:
+                    # comes from decorator
+                    kwargs['operation'] = operation
+                    op = operation
+                elif 'operation' in kwargs:
+                    # comes from request
+                    op = kwargs['operation']
+                else:
+                    return Response('Operation not properly set', 502)
                 type_definitions = type(self)._allowed_types
                 if _type not in type_definitions:
                     return Response('Not Found', 404)
-                elif operation not in type_definitions[_type]:
-                    return Response(f'{operation} not valid for {_type}', 405)
+                elif op not in type_definitions[_type]:
+                    return Response(f'{op} not valid for {_type}', 405)
                 return f(self, *args, **kwargs)
             return decorated
         return decorator
@@ -171,6 +185,11 @@ class APIServer(object):
             self.status,
             methods=['GET', 'POST'])
 
+        self.register(
+            '<string:_type>/<string:operation>',
+            self.handle_other,
+            methods=['GET', 'POST'])
+
         self.register('healthcheck', self.request_healthcheck)
 
     def register(self, route_name, fn, **options) -> None:
@@ -195,10 +214,24 @@ class APIServer(object):
     def requires_auth(f):  # TODO # Can't get this typed properly
         @wraps(f)
         def decorated(self, *args, **kwargs):
-            LOG.error([args, kwargs])
-            auth = request.authorization
-            if not auth or not self.check_auth(auth.username, auth.password):
-                return self.request_authentication()
+            # if we're running tenanted then we don't use basic auth
+            if not self.settings.get('TENANCY_HEADER'):
+                auth = request.authorization
+                if not auth or not self.check_auth(auth.username, auth.password):
+                    return self.request_authentication()
+            return f(self, *args, **kwargs)
+        return decorated
+
+    def check_tenant(f):
+        @wraps(f)
+        def decorated(self, *args, **kwargs):
+            tenancy_header = self.settings.get('TENANCY_HEADER')
+            if not tenancy_header:
+                return f(self, *args, **kwargs)
+            tenant = request.headers.get(tenancy_header)
+            if not tenant:
+                return Response(f'Missing tenant header: {tenancy_header}', 400)
+            kwargs['tenant'] = tenant
             return f(self, *args, **kwargs)
         return decorated
 
@@ -216,57 +249,73 @@ class APIServer(object):
 
     @restrict_types('STATUS')
     @requires_auth
-    def status(self, _type=None, operation=None):
+    @check_tenant
+    def status(self, tenant=None, _type=None, operation=None):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.status(_id))
+            return jsonify(self.consumer.status(_id, tenant))
 
     @restrict_types('PAUSE')
     @requires_auth
-    def pause(self, _type=None, operation=None):
+    @check_tenant
+    def pause(self, tenant=None, _type=None, operation=None):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.pause(_id))
+            return jsonify(self.consumer.pause(_id, tenant))
 
     @restrict_types('RESUME')
     @requires_auth
-    def resume(self, _type=None, operation=None):
+    @check_tenant
+    def resume(self, tenant=None, _type=None, operation=None):
         _id = request.args.get('id', None)
         with self.app.app_context():
-            return jsonify(self.consumer.resume(_id))
+            return jsonify(self.consumer.resume(_id, tenant))
 
     # Generic CRUD
 
     @restrict_types('CREATE')
     @requires_auth
-    def add(self, _type=None, operation=None):
-        return self.handle_crud(request, operation, _type)
+    @check_tenant
+    def add(self, tenant=None, _type=None, operation=None):
+        return self.handle_crud(request, operation, _type, tenant)
 
     @restrict_types('DELETE')
     @requires_auth
-    def remove(self, _type=None, operation=None):
-        return self.handle_crud(request, operation, _type)
+    @check_tenant
+    def remove(self, tenant=None, _type=None, operation=None):
+        return self.handle_crud(request, operation, _type, tenant)
 
     @restrict_types('READ')
     @requires_auth
-    def get(self, _type=None, operation=None):
-        return self.handle_crud(request, operation, _type)
+    @check_tenant
+    def get(self, tenant=None, _type=None, operation=None):
+        return self.handle_crud(request, operation, _type, tenant)
 
     # List of Assets of _type
 
     @restrict_types('LIST')
     @requires_auth
-    def _list(self, _type=None, operation=None):
-        return self.handle_crud(request, operation, _type)
+    @check_tenant
+    def _list(self, tenant=None, _type=None, operation=None):
+        return self.handle_crud(request, operation, _type, tenant)
 
     # Validation of asset of _type
 
     @restrict_types('VALIDATE')
     @requires_auth
-    def validate(self, _type=None, operation=None):
+    @check_tenant
+    def validate(self, tenant=None, _type=None, operation=None):
         res = self.consumer.validate(request.get_json(), _type)
         with self.app.app_context():
             return jsonify({'valid': res})
+
+    @restrict_types()
+    @requires_auth
+    @check_tenant
+    def handle_other(self, tenant=None, _type=None, operation=None):
+        res = self.consumer.dispatch(tenant, _type, operation, request)
+        with self.app.app_context():
+            return jsonify(res)
 
     #######
     #
@@ -274,24 +323,30 @@ class APIServer(object):
     #
     #######
 
-    def handle_crud(self, request: Request, operation: str, _type: str):
+    def handle_crud(self, request: Request, operation: str, _type: str, tenant: str):
         self.app.logger.debug(request)
         _id = request.args.get('id', None)
-        response: Union[str, List, Dict, bool]  # anything compat with jsonify
+        response: Union[str, List, Dict, bool]  # anything compatible with jsonify
         if operation == 'CREATE':
-            if self.consumer.validate(request.get_json(), _type=_type):
-                response = self.task.add(request.get_json(), type=_type)
+            if self.consumer.validate(request.get_json(), _type, tenant):
+                response = self.task.add(request.get_json(), _type, tenant)
             else:
                 response = False
         if operation == 'DELETE':
             if not _id:
                 return Response('Argument "id" is required', 400)
-            response = self.task.remove(_id, type=_type)
+            try:
+                response = self.task.remove(_id, _type, tenant)
+            except ValueError:
+                response = {'error': f'{_type} object with id : {_id} not found'}
         if operation == 'READ':
             if not _id:
                 return Response('Argument "id" is required', 400)
-            response = json.loads(str(self.task.get(_id, type=_type)))
+            try:
+                response = json.loads(str(self.task.get(_id, _type, tenant)))
+            except ValueError:
+                response = {'error': f'{_type} object with id : {_id} not found'}
         if operation == 'LIST':
-            response = list(self.task.list(type=_type))
+            response = list(self.task.list(_type, tenant))
         with self.app.app_context():
             return jsonify(response)
