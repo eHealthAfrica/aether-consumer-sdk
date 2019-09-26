@@ -39,6 +39,7 @@ setup(
 
     python_requires='>=3.6',
     install_requires=[
+        'aether.python',
         'confluent_kafka',
         'flask',
         'jsonpath_ng',
