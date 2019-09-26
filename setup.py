@@ -21,7 +21,7 @@
 import os
 from setuptools import setup, find_packages
 
-VERSION = os.environ.get('VERSION', '2.0.0')
+VERSION = os.environ.get('VERSION', '3.0.0')
 
 setup(
     name='aet.consumer',
