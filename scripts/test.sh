@@ -45,7 +45,7 @@ kill_all
 if [[ $SCAFFOLD == True ]]
 then
     echo "_________________________________________________ Starting Kafka"
-    docker-compose up -d  redis-test #zookeeper-test kafka-test redis-test
+    docker-compose up -d  zookeeper-test kafka-test
 fi
 
 echo "_________________________________________________ Starting Python Tests in mode $MODE"

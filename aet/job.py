@@ -99,6 +99,10 @@ class BaseJob(object):
                 'validation_errors': [str(e) for e in errors]
             }
 
+    @classmethod
+    def get_schema(cls):
+        return cls.schema
+
     def __init__(self, _id: str, tenant: str, resources: InstanceManager):
         self._id = _id
         self.tenant = tenant
@@ -117,7 +121,6 @@ class BaseJob(object):
         try:
             c = 0
             while self.status is not JobStatus.STOPPED:
-                LOG.debug(f'{self._id} round {c}')
                 c += 1
                 if c % self.report_interval == 0:
                     LOG.debug(f'thread {self._id} running : {self.status}')
@@ -136,10 +139,8 @@ class BaseJob(object):
                 # get a deepcopy of config
                 config = deepcopy(self.config)
                 if not config:
-                    LOG.warning(f'{self._id} No config to pass...')
+                    # config changed in flight, try again
                     continue
-                else:
-                    LOG.info(f'{self._id} found config')
                 try:
                     LOG.debug(f'{self._id} -> {self.status}')
                     messages = self._get_messages(config)
@@ -240,12 +241,12 @@ class JobManager(object):
         LOG.debug('JobManager Ready')
 
     def stop(self, *args, **kwargs):
-        LOG.info(f'Stopping jobs')
         threads = []
         for _id, job in self.jobs.items():
-            LOG.debug(f'Stopping job {_id}')
             threads.append(job.stop())
+        LOG.info('Stopping Job Threads...')
         [t.join() for t in threads]
+        LOG.info('Stopping Resources...')
         [t.join() for t in self.resource.stop()]
 
     # Job Initialization

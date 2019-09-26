@@ -6,18 +6,6 @@ services:
   # Aether Kafka Containers
   # ---------------------------------
 
-  redis-test:
-    image: redis:3-alpine
-    command: [
-      "--requirepass", "${REDIS_PASSWORD:-aredispassword}",
-      "--notify-keyspace-events", "KA",
-      "--appendonly", "yes"
-    ]
-    env_file:
-      - tests/test_environment.env
-    ports:
-      - 6379:6379
-
   zookeeper-test:
     image: confluentinc/cp-zookeeper:5.2.1
     environment:

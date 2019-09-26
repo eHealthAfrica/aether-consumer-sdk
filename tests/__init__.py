@@ -594,20 +594,20 @@ def mocked_consumer():
     sleep(.5)
 
 
-@pytest.mark.integration
-@pytest.fixture(scope="module")
-def consumer() -> Iterable[BaseConsumer]:
-    # mock API from unit tests not shutdown until end avoid it's port and name
-    os.environ['CONSUMER_NAME'] = 'BaseConsumer'
-    os.environ['EXPOSE_PORT'] = '9014'
-    _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
-    _consumer.schemas = {'resource': {}, 'job': {}}  # blank schemas
-    sleep(1)
-    yield _consumer
-    # teardown
-    LOG.debug('Fixture consumer complete, stopping.')
-    _consumer.stop()
-    sleep(.5)
+# @pytest.mark.integration
+# @pytest.fixture(scope="module")
+# def consumer() -> Iterable[BaseConsumer]:
+#     # mock API from unit tests not shutdown until end avoid it's port and name
+#     os.environ['CONSUMER_NAME'] = 'BaseConsumer'
+#     os.environ['EXPOSE_PORT'] = '9014'
+#     _consumer = BaseConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+#     _consumer.schemas = {'resource': {}, 'job': {}}  # blank schemas
+#     sleep(1)
+#     yield _consumer
+#     # teardown
+#     LOG.debug('Fixture consumer complete, stopping.')
+#     _consumer.stop()
+#     sleep(.5)
 
 
 # API Assets
@@ -627,12 +627,12 @@ def mocked_api(mocked_consumer) -> Iterable[APIServer]:
     sleep(.5)
 
 
-# TaskHelper Assets
-@pytest.mark.integration
-@pytest.fixture(scope="module")
-def task_helper() -> Iterable[TaskHelper]:
-    helper = TaskHelper(settings.CONSUMER_CONFIG)
-    yield helper
-    LOG.debug('Fixture task_helper complete, stopping.')
-    helper.stop()
-    sleep(.5)
+# # TaskHelper Assets
+# @pytest.mark.integration
+# @pytest.fixture(scope="module")
+# def task_helper() -> Iterable[TaskHelper]:
+#     helper = TaskHelper(settings.CONSUMER_CONFIG)
+#     yield helper
+#     LOG.debug('Fixture task_helper complete, stopping.')
+#     helper.stop()
+#     sleep(.5)

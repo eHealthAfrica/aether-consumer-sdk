@@ -23,6 +23,7 @@ from datetime import datetime
 from inspect import signature
 import json
 import queue
+from time import sleep
 import threading
 from typing import Any, Dict, List, Union
 
@@ -36,6 +37,7 @@ LOG = get_logger('Resource')
 
 
 def lock(f):
+    # Unlocked / Prioritized by InstanceManager._delegate
     def wrapper(self, *args, **kwargs):
         marker = None
         priority = 5
@@ -43,35 +45,30 @@ def lock(f):
         if '__queue_priority' in kwargs:
             priority = kwargs['__queue_priority']
             del kwargs['__queue_priority']
-        success = False
-        if self.waiting_line.empty() and not self.lock.locked():
-            LOG.debug(f'{self.id} -> {f.__name__} empty access requested')
-            success = self.lock.acquire(timeout=0)
-        if not success:
-            LOG.debug(f'{self.id} -> {f.__name__} must wait')
-            marker = threading.Lock()
-            marker.acquire()  # lock it and put it into the queue
-            self.waiting_line.put(tuple([priority, stamp, marker]))
-            marker.acquire()  # wait for someone else to open it
-            self.lock.acquire(blocking=False)
+        LOG.debug(f'{self.id} -> {f.__name__} must wait')
+        marker = threading.Lock()
+        marker.acquire()  # lock it and put it into the queue
+        self.waiting_line.put(tuple([priority, stamp, marker]))
+        # wait for the marker to be unlocked or the kill signal
+        while marker.locked() and not self._stopped:
+            sleep(.01)
+        if self._stopped:
+            LOG.debug('Releasing resource request on stop')
+            marker.release()
+            return
+        # mark the resource as used
+        self.lock.acquire(blocking=False)
+        marker = None
+
         try:
-            LOG.debug(f'{self.id} servicing {priority}, {stamp}')
+            LOG.debug(f'{self.id} servicing {priority}, {stamp} ?{self._stopped}')
             res = f(self, *args, **kwargs)
             return res
         except Exception as err:
             raise err
         finally:
-            try:
-                # if someone is in line, open them up
-                token = self.waiting_line.get(timeout=0)
-                priority, stamp, new_marker = token
-                LOG.debug(f'{self.id} tapping {priority}, {stamp}')
-                new_marker.release()
-                self.lock.release()
-            except queue.Empty:
-                # if the queue is empty change the sign
-                self.lock.release()
-                LOG.debug(f'{self.id} -> {f.__name__} released to no one')
+            LOG.debug(f'{self.id} DONE {priority}, {stamp}')
+            self.lock.release()
     return wrapper
 
 
@@ -88,7 +85,7 @@ class BaseResource(object):
     validator: Any = None
     lock: threading.Lock
     waiting_line: queue.PriorityQueue
-    lock_timeout_sec: int = 60
+    _stopped: bool
 
     @classmethod
     def _validate(cls, definition) -> bool:
@@ -110,6 +107,10 @@ class BaseResource(object):
                 'valid': False,
                 'validation_errors': [str(e) for e in errors]
             }
+
+    @classmethod
+    def get_schema(cls):
+        return cls.schema
 
     @classmethod
     def _describe(cls):
@@ -141,6 +142,7 @@ class BaseResource(object):
 
     def __init__(self, definition):
         # should be validated before initialization
+        self._stopped = False
         self.lock = threading.Lock()
         self.waiting_line = queue.PriorityQueue()
         self.id = definition['id']
@@ -158,25 +160,52 @@ class BaseResource(object):
         '''
         pass
 
-    @lock
-    def _stop(self):
+    def stop(self):
         '''
         Handles stop call before removal
         '''
-        LOG.debug(f'{self.id} stopped.')
-        pass
+        self._stopped = True
 
 
 class InstanceManager(object):
 
     instances: Dict[str, BaseResource]
     rules: Dict[str, Any]
+    stopped: bool
 
     def __init__(self, rules):
         self.rules = rules
         self.instances = {}
+        self._stopped = False
+        thread = threading.Thread(
+            target=self.__delegate,
+            daemon=True)
+        thread.start()
+
+    def __delegate(self):
+        while not self._stopped:
+            for k, res in self.instances.items():
+                try:
+                    if self._stopped:
+                        return
+                    if res.lock.locked():
+                        # resource in use
+                        continue
+                    # if someone is in line, open them up
+                    token = res.waiting_line.get(timeout=0)
+                    priority, stamp, marker = token
+                    LOG.debug(f'Tapping {priority}, {stamp}')
+                    marker.release()
+                    res.lock.acquire(blocking=False)
+                except queue.Empty:
+                    pass
+                except AttributeError:
+                    # no lock or line
+                    pass
+            sleep(.01)
 
     def stop(self):
+        self._stopped = True
         LOG.info('Stopping Instances')
         keys = list(self.instances.keys())
         for k in keys:
@@ -215,7 +244,7 @@ class InstanceManager(object):
             thread = threading.Thread(
                 target=self.instances[key].update,
                 args=(body, ),
-                kwargs={'__queue_priority': 0},
+                kwargs={'__queue_priority': 1},
                 daemon=True)
             thread.start()
         else:
@@ -240,7 +269,7 @@ class InstanceManager(object):
     def __remove_on_unlock(self, key):
         try:
             obj = self.instances[key]
-            obj._stop()
+            obj.stop()
             # safe to delete
             del self.instances[key]
         except KeyError:

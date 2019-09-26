@@ -61,11 +61,6 @@ case "$1" in
         $PYTEST -m integration
     ;;
 
-    test_kafka )
-        echo 'Running Kafka Tests...'
-        $PYTEST -m kafka
-    ;;
-
     *)
         show_help
     ;;
