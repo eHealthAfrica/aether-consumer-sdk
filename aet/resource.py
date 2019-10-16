@@ -19,21 +19,42 @@
 # under the License.
 
 
+from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from inspect import signature
 import json
 import queue
 from time import sleep
 import threading
-from typing import Any, Dict, List, Union
+from typing import Any, Callable, Dict, List, Union
 
 from aether.python.redis.task import Task, TaskEvent
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 
 from .logger import get_logger
+from .helpers import classproperty, require_property
 
 LOG = get_logger('Resource')
+
+
+class ResourceReference(object):
+    redis_type: str
+    redis_name: str
+    redis_path: str
+    job_path: str
+    _class: Callable  # BaseResource
+
+    def __init__(self, name, job_path, _class):
+        self.job_path = job_path
+        self._class = _class
+        self.make_paths(name)
+
+    def make_paths(self, name):
+        name = name.lower()
+        self.redis_type = f'{name}'
+        self.redis_name = f'_{name}:'
+        self.redis_path = f'{self.redis_name}*'
 
 
 def lock(f):
@@ -71,20 +92,51 @@ def lock(f):
     return wrapper
 
 
-class BaseResource(object):
+class BaseResource(metaclass=ABCMeta):
+
+    # instance vars
+
     id: str
-    definition: Any  # the implementation of this resource
+    definition: str  # implementation of the def described in the schema
     # requires no instance to execute
-    static_actions: Dict[str, str] = {
-        'describe': '_describe',
-        'validate': '_validate_pretty'
-    }
-    public_actions: List[str]  # public interfaces for this type
-    schema: str = None  # the schema of this resource type as JSONSchema
     validator: Any = None
     lock: threading.Lock
     waiting_line: queue.PriorityQueue
     _stopped: bool
+
+    # class attributes
+
+    @property
+    @abstractmethod
+    def schema(self) -> str:  # the implementation of this resource, as stringified jsonschema
+        return self.schema
+
+    @property
+    @abstractmethod
+    def name(self) -> str:  # must be unique per consumer!
+        return self._name
+
+    @property
+    @abstractmethod
+    def jobs_path(self) -> str:  # The jsonpath to this resource in the Calling Job
+        return self._jobs_path
+
+    @classproperty
+    def static_actions(cls) -> Dict[str, str]:
+        return {
+            'describe': '_describe',
+            'validate': '_validate_pretty'
+        }
+
+    @classproperty
+    def public_actions(self) -> List[str]:  # public interfaces for this type
+        return []
+
+    @classproperty
+    def reference(cls) -> ResourceReference:
+        _name = require_property(cls.name)
+        _jobs_path = require_property(cls.jobs_path)
+        return ResourceReference(_name, _jobs_path, cls)
 
     @classmethod
     def _validate(cls, definition) -> bool:
@@ -246,7 +298,11 @@ class InstanceManager(object):
 
     def update(self, _id, _type, tenant, body):
         key = self.format(_id, _type, tenant)
-        _cls = self.rules.get(_type, {}).get('class')
+        _classes = {_cls.name: _cls for _cls in self.rules}
+        _cls = _classes.get(_type)
+        if not _cls:
+            LOG.error([_type, _classes])
+            raise RuntimeError('Expected to find definition for {_type}')
         if key in self.instances:
             # this is blocking on lock so thread it
             thread = threading.Thread(
@@ -255,6 +311,7 @@ class InstanceManager(object):
                 kwargs={'__queue_priority': 1},
                 daemon=True)
             thread.start()
+            LOG.debug(f'Updating instance of {key}')
         else:
             self.instances[key] = _cls(body)
             LOG.debug(f'Created new instance of {key}, now: {list(self.instances.keys())}')
@@ -302,3 +359,5 @@ class InstanceManager(object):
             if msg.event == 'del':
                 _type = '_'.join(msg.type.split('_')[1:])
                 self.remove(msg.task_id, _type, msg.tenant)
+        else:
+            LOG.warning(f'Received out of band message: {msg}')

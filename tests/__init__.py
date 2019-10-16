@@ -67,6 +67,9 @@ TestResourceDef1 = {'id': '1', 'username': 'user', 'password': 'pw'}
 
 class TestResource(BaseResource):
 
+    name = 'TestResource'
+    jobs_path = '$.no.real.job'
+
     public_actions = [
         'upper',
         'null'
@@ -154,6 +157,9 @@ class TestJob(BaseJob):
 
 class IResource(BaseResource):
 
+    jobs_path = '$.resources'
+    name = 'resource'
+
     public_actions = [
         'say_wait'
     ]
@@ -215,16 +221,8 @@ class IResource(BaseResource):
 
 class IJob(BaseJob):
 
-    _resources: ClassVar[dict] = {
-        'resource': {
-            'redis_type': 'resource',
-            'redis_name': '_resource:',
-            'redis_path': '_resource:*',  # Where to subscribe for this type in Redis
-            'job_path': '$.resources',  # Where to find the resource reference in the job
-            'class': IResource       # Subclass of BaseResource
-        }
-    }
-
+    name = 'job'
+    _resources = [IResource]
     schema = '''
     {
       "definitions": {},

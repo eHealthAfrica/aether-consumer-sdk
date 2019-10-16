@@ -18,20 +18,22 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from abc import ABCMeta, abstractmethod
 from copy import deepcopy
 import enum
 import json
 from time import sleep
 from threading import Thread
-from typing import Any, Callable, ClassVar, Dict, List, Union
+from typing import Any, Callable, Dict, List, Union
 
 from aether.python.redis.task import Task, TaskEvent, TaskHelper
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 
+from .helpers import classproperty, require_property
 from .jsonpath import CachedParser
 from .logger import get_logger
-from .resource import BaseResource, InstanceManager
+from .resource import BaseResource, InstanceManager, ResourceReference
 
 LOG = get_logger('Job')
 
@@ -44,26 +46,26 @@ class JobStatus(enum.Enum):
     NORMAL = 4  # Job is operating normally
 
 
-class BaseJob(object):
+class JobReference(object):
+    redis_type: str
+    redis_name: str
+    redis_path: str
+
+    def __init__(self, name):
+        self.make_paths(name)
+
+    def make_paths(self, name):
+        name = name.lower()
+        self.redis_type = f'{name}'
+        self.redis_name = f'_{name}:'
+        self.redis_path = f'{self.redis_name}*'
+
+
+class BaseJob(metaclass=ABCMeta):
 
     _id: str
     status: JobStatus = JobStatus.PAUSED
     config: dict = {}
-
-    _job_redis_type: ClassVar[str] = 'job'
-    _job_redis_name: ClassVar[str] = f'_{_job_redis_type}:'
-    _job_redis_path: ClassVar[str] = f'{_job_redis_name}*'
-    # Any type here needs to be registered in the API as APIServer._allowed_types
-
-    _resources: ClassVar[dict] = {
-        'resource': {
-            'redis_type': 'resource',
-            'redis_name': '_resource:',
-            'redis_path': '_resource:*',  # Where to subscribe for this type in Redis
-            'job_path': '$.resources',  # Where to find the resource reference in the job
-            'class': BaseResource       # Subclass of BaseResource
-        }
-    }
 
     resources: InstanceManager
     value: int = 0
@@ -74,9 +76,28 @@ class BaseJob(object):
     # join timeout for the worker thread
     shutdown_grace_period: int = 5
     # the configuration schema for instances of this job
-    schema: str = None  # jsonschema for job instructions
     tenant: str  # tenant for this job
     validator: Any = None  # jsonschema validation object
+
+    @property
+    @abstractmethod  # required
+    def _resources(self) -> List[BaseResource]:
+        return []
+
+    @property
+    @abstractmethod  # required
+    def name(self) -> str:
+        return None
+
+    @property
+    @abstractmethod  # required
+    def schema():
+        return None  # jsonschema for job instructions
+
+    @classproperty
+    def reference(cls) -> JobReference:
+        name = require_property(cls.name)
+        return JobReference(name)
 
     @classmethod
     def _validate(cls, definition) -> bool:
@@ -151,6 +172,7 @@ class BaseJob(object):
                     self.safe_sleep(10)
             LOG.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
+            raise fatal
             LOG.critical(f'job {self._id} failed with critical error {fatal}')
             self.status = JobStatus.DEAD
 
@@ -184,7 +206,12 @@ class BaseJob(object):
         return str(self.status)
 
     def get_resources(self, _type, config) -> List[BaseResource]:
-        path = type(self)._resources.get(_type, {}).get('job_path')
+        _cls = [_cls for _cls in self._resources if _cls.name == _type]
+        if not _cls:
+            LOG.error(f'{self._id} found no resources of type "{_type}"')
+            return []
+        _cls = _cls[0]
+        path = _cls.reference.job_path
         matches = CachedParser.find(path, config)
         if not matches:
             LOG.debug(f'{self._id} found no resources in {matches}, {path} -> {config}')
@@ -221,7 +248,6 @@ class JobManager(object):
     jobs: Dict[str, BaseJob]
     resources: InstanceManager
     task: TaskHelper
-    job_class: Callable
 
     @staticmethod
     def get_job_id(job: Union[str, Dict[str, Any]], tenant: str):
@@ -254,18 +280,18 @@ class JobManager(object):
     # Job Initialization
 
     def _init_jobs(self):
-        jobs = list(self.task.list(self.job_class._job_redis_type))
+        jobs = list(self.task.list(self.job_class.reference.redis_type))
         for job in jobs:
             tenant, _id = job.split(':')
-            job: Dict = self.task.get(_id, type=self.job_class._job_redis_type, tenant=tenant)
+            job: Dict = self.task.get(_id, type=self.job_class.reference.redis_type, tenant=tenant)
             LOG.debug(f'init job: {job}')
             self._init_job(job, tenant)
         self.listen_for_job_change()
 
     def _init_resources(self):
-        resources = self.job_class._resources
-        for _type, rule in resources.items():
-            _type = rule['redis_type']
+        for _cls in self.job_class._resources:
+            ref: ResourceReference = _cls.reference
+            _type = ref.redis_type
             keys = [k.split(':') for k in self.task.list(_type)]
             for tenant, _id in keys:
                 LOG.debug(f'Init resource: {tenant}:{_id}')
@@ -344,17 +370,16 @@ class JobManager(object):
     # register generic listeners on a redis path
 
     def listen_for_job_change(self):
-        _path = self.job_class._job_redis_path
+        _path = self.job_class.reference.redis_path
         LOG.debug(f'Registering Job Change Listener, {_path}')
         self.task.subscribe(self.on_job_change, _path, True)
 
     def listen_for_resource_change(self):
         # handles work for all resource types
-        resources = self.job_class._resources
-        for _type, rule in resources.items():
-            redis_path = rule['redis_path']
-            LOG.debug(f'Listening for resource {_type} on {redis_path}')
-            # use a partial to keep from having to inspect the message source later
+        for _cls in self.job_class._resources:
+            redis_path = _cls.reference.redis_path
+            _type = _cls.reference.redis_type
+            LOG.debug(f'Listening for resource "{_type}"" on {redis_path}')
             self.task.subscribe(self.on_resource_change, redis_path, True)
 
     # generic handler called on change of any resource. Dispatched to dependent jobs
@@ -362,6 +387,7 @@ class JobManager(object):
         self,
         msg: Union[Task, TaskEvent]
     ) -> None:
+        LOG.debug(f'Resource Change: {msg}')
         self.resources.on_resource_change(msg)
 
     # generic job change listener then dispatched to the proper job / creates new job

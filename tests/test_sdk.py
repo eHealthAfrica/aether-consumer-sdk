@@ -565,10 +565,14 @@ _type = 'resource'
 def test_itest_add_resources(IJobManagerFNScope):
     for res in i_resources:
         IJobManagerFNScope.task.add(res, _type, tenant)
+    # LOG.debug(list(IJobManagerFNScope.task.list(_type)))
+    # for i in IJobManagerFNScope.task.redis.scan_iter('*'):
+    #     LOG.debug(i.decode('utf-8'))
     sleep(1)
     _ids = [r.get('id') for r in i_resources]
+    keys = [key for key in IJobManagerFNScope.resources.instances.keys()]
     for _id in _ids:
-        assert(any([_id in key for key in IJobManagerFNScope.resources.instances.keys()]))
+        assert(any([_id in key for key in keys])), [_ids, keys]
 
 
 @pytest.mark.unit
