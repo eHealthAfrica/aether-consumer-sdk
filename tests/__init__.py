@@ -45,7 +45,7 @@ from aet.job import BaseJob, JobManager, JobStatus
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.logger import get_logger
-from aet.resource import BaseResource, lock
+from aet.resource import BaseResource, lock, BASE_PUBLIC_ACTIONS
 
 
 from .assets.schemas import test_schemas
@@ -67,12 +67,13 @@ TestResourceDef1 = {'id': '1', 'username': 'user', 'password': 'pw'}
 
 class TestResource(BaseResource):
 
-    name = 'TestResource'
+    name = 'resource'
     jobs_path = '$.no.real.job'
 
-    public_actions = [
+    public_actions = BASE_PUBLIC_ACTIONS + [
         'upper',
-        'null'
+        'null',
+        'validate_pretty'
     ]
 
     schema = '''
@@ -153,6 +154,7 @@ class TestJob(BaseJob):
       "properties": {}
     }
     '''
+    _resources = [TestResource]
 
 
 class IResource(BaseResource):
@@ -316,6 +318,7 @@ def get_fakeredis():
 
 class MockConsumer(BaseConsumer):
 
+    job_class = TestJob
     _classes: ClassVar[Dict[str, Any]] = {
         'resource': TestResource,
         'job': TestJob

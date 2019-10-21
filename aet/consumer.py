@@ -22,6 +22,7 @@ from time import sleep
 from typing import Any, ClassVar, Dict, List, Union
 
 from aether.python.redis.task import TaskHelper
+from flask import Response
 import redis
 
 from .api import APIServer
@@ -38,10 +39,7 @@ EXCLUDED_TOPICS = ['__confluent.support.metrics']
 class BaseConsumer(object):
 
     # classes used by this consumer
-    _classes: ClassVar[Dict[str, Any]] = {
-        'resource': BaseResource,
-        'job': BaseJob
-    }
+    _classes: ClassVar[Dict[str, Any]]
 
     api: APIServer
     consumer_settings: Settings
@@ -59,18 +57,21 @@ class BaseConsumer(object):
             encoding='utf-8',
             decode_responses=False
         )
-        pass
 
-    def __init__(self, CON_CONF, KAFKA_CONF, redis_instance=None):
+    def __init__(self, CON_CONF, KAFKA_CONF, job_class, redis_instance=None):
 
         self.consumer_settings = CON_CONF
         self.kafka_settings = KAFKA_CONF
         if not redis_instance:
             redis_instance = type(self).get_redis(CON_CONF)
+        self._classes = {
+            _cls.name: _cls for _cls in JOB_TYPE._resources
+        }
+        self._classes['job'] = JOB_TYPE
         self.task = TaskHelper(
             self.consumer_settings,
             redis_instance=redis_instance)
-        self.job_manager = JobManager(self.task, job_class=BaseJob)
+        self.job_manager = JobManager(self.task, job_class=job_class)
         self.serve_api(self.consumer_settings)
 
     # Control API
@@ -108,7 +109,7 @@ class BaseConsumer(object):
 
     def validate(self, job, _type=None, verbose=False, tenant=None):
         # consumer the tenant argument only because other methods need it
-        _cls = type(self)._classes.get(_type)
+        _cls = self._classes.get(_type)
         if not _cls:
             return {'error': f'un-handled type: {_type}'}
         if verbose:
@@ -117,9 +118,19 @@ class BaseConsumer(object):
             return _cls._validate(job)
 
     def dispatch(self, tenant=None, _type=None, operation=None, request=None):
+        _fn = self._classes.get(_type).static_actions.get(operation)
+        if _fn:
+            return _fn(request)
+        # not a static function, needs an instance
+        _id = request.args.get('id', None)
+        if not _id:
+            LOG.debug('Request is missing ID')
+            return Response('Argument "id" is required', 400)
+        LOG.debug('Dispatching to job manager')
         return self.job_manager.dispatch_resource_call(
             tenant,
             _type,
             operation,
+            _id,
             request
         )

@@ -426,6 +426,8 @@ def test_cached_parser__bad_path():
                         ('resource/get', None, True),
                         ('resource/get?id=fake', {'error': 'resource object with id : fake not found'}, False),
                         ('resource/list', [], False),
+                        ('resource/validate_pretty', -1, False),
+                        ('resource/null?id=fake', -1, True),  # properly dispatched to missing JM
                         ('bad_resource/list', {}, True),
                         ('healthcheck', 'healthy', False)
 ])
@@ -438,7 +440,8 @@ def test_api_get_calls(call, result, raises_error, mocked_api):
     res = requests.get(url, auth=auth)
     try:
         res.raise_for_status()
-    except Exception:
+    except Exception as aer:
+        LOG.debug(aer)
         assert(raises_error)
         return
     try:
@@ -446,7 +449,9 @@ def test_api_get_calls(call, result, raises_error, mocked_api):
     except json.decoder.JSONDecodeError:
         val = res.text
     finally:
-        assert(val == result)
+        if result is not -1:
+            # want to be able to expect and ignore complex results
+            assert(val == result)
 
 
 @pytest.mark.unit

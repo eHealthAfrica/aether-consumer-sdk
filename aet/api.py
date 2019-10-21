@@ -43,15 +43,7 @@ DEFAULT_TENANT = CONSUMER_CONFIG.get('DEFAULT_TENANT', 'no-tenant')
 class APIServer(object):
 
     # consumed by the restrict_types decorator
-    _allowed_types: ClassVar[Dict[str, List]] = {
-        'job': [
-            'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE',  # These are generic crud
-            'PAUSE', 'RESUME', 'STATUS'  # These are only valid for jobs
-        ],
-        'resource': [
-            'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE'
-        ]
-    }
+    _allowed_types: ClassVar[Dict[str, List]]
 
     def __init__(
         # type declaration of the arguments in the usual way causes
@@ -61,7 +53,14 @@ class APIServer(object):
         task_manager: 'TaskHelper',
         settings: 'Settings'
     ) -> None:
-
+        type(self)._allowed_types = {
+            _cls.name: _cls.public_actions for _cls in consumer.job_class._resources
+        }
+        type(self)._allowed_types['job'] = [
+            'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE',  # These are generic crud
+            'PAUSE', 'RESUME', 'STATUS'  # These are only valid for jobs
+        ]
+        LOG.debug(f'Allowed Operations: {type(self)._allowed_types}')
         self.settings = settings
         self.consumer = consumer
         self.task = task_manager
@@ -313,7 +312,14 @@ class APIServer(object):
     @requires_auth
     @check_tenant
     def handle_other(self, tenant=None, _type=None, operation=None):
+        _cls = self.consumer._classes.get(_type)
+        if not _cls:
+            return Response(f'Invalid type "{_type}".', 400)
+        if operation not in _cls.public_actions:
+            return Response(f'"{_type}" does not allow operation {operation}', 400)
         res = self.consumer.dispatch(tenant, _type, operation, request)
+        if isinstance(res, Response):
+            return res
         with self.app.app_context():
             return jsonify(res)
 
@@ -324,7 +330,7 @@ class APIServer(object):
     #######
 
     def handle_crud(self, request: Request, operation: str, _type: str, tenant: str):
-        self.app.logger.debug(request)
+        self.app.logger.debug(f'tenant: {tenant} request: {request}')
         _id = request.args.get('id', None)
         response: Union[str, List, Dict, bool]  # anything compatible with jsonify
         if operation == 'CREATE':

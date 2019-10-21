@@ -21,6 +21,7 @@
 
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
+import flask
 from inspect import signature
 import json
 import queue
@@ -36,6 +37,8 @@ from .logger import get_logger
 from .helpers import classproperty, require_property
 
 LOG = get_logger('Resource')
+
+BASE_PUBLIC_ACTIONS = ['READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE']
 
 
 class ResourceReference(object):
@@ -122,15 +125,15 @@ class BaseResource(metaclass=ABCMeta):
         return self._jobs_path
 
     @classproperty
-    def static_actions(cls) -> Dict[str, str]:
+    def static_actions(cls) -> Dict[str, Callable]:
         return {
-            'describe': '_describe',
-            'validate': '_validate_pretty'
+            'describe': cls._describe,
+            'validate_pretty': cls._validate_pretty
         }
 
     @classproperty
     def public_actions(self) -> List[str]:  # public interfaces for this type
-        return []
+        return BASE_PUBLIC_ACTIONS + []
 
     @classproperty
     def reference(cls) -> ResourceReference:
@@ -149,7 +152,9 @@ class BaseResource(metaclass=ABCMeta):
             return False
 
     @classmethod
-    def _validate_pretty(cls, definition):
+    def _validate_pretty(cls, definition, *args, **kwargs):
+        if isinstance(definition, flask.Request):
+            definition = definition.get_json()
         if cls._validate(definition):
             return {'valid': True}
         else:
@@ -164,7 +169,7 @@ class BaseResource(metaclass=ABCMeta):
         return cls.schema
 
     @classmethod
-    def _describe(cls):
+    def _describe(cls, *args, **kwargs):
         description = []
         for action in cls.public_actions:
             try:
@@ -173,16 +178,16 @@ class BaseResource(metaclass=ABCMeta):
                 item['signature'] = str(signature(method))
                 description.append(item)
             except AttributeError:
-                LOG.error(f'{cls.__name__} has no method {action}')
+                if action not in BASE_PUBLIC_ACTIONS:
+                    LOG.error(f'{cls.__name__} has no method {action}')
                 pass
         return description
 
     @classmethod
     def _describe_static(cls):
         description = []
-        for name, action in cls.static_actions.items():
+        for name, method in cls.static_actions.items():
             try:
-                method = getattr(cls, action)
                 item = {'method': name}
                 item['signature'] = str(signature(method))
                 description.append(item)
@@ -316,8 +321,15 @@ class InstanceManager(object):
             self.instances[key] = _cls(body)
             LOG.debug(f'Created new instance of {key}, now: {list(self.instances.keys())}')
 
-    def dispatch(self, tenant=None, _type=None, operation=None, request=None):
-        pass
+    def dispatch(self, tenant=None, _type=None, operation=None, _id=None, request=None):
+        LOG.debug(f'Dispatching request {tenant}:{_type}:{operation}{_id}')
+        try:
+            inst = self.get(_id, _type, tenant)
+            fn = getattr(inst, operation)
+            return fn(request)
+        except Exception as err:
+            LOG.debug(f'Error in arbitrary function: {err}')
+            return err
 
     def format(self, _id, _type, tenant):
         return f'{tenant}:{_type}:{_id}'
