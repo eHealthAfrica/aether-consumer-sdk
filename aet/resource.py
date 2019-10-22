@@ -21,7 +21,6 @@
 
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
-import flask
 from inspect import signature
 import json
 import queue
@@ -32,6 +31,7 @@ from typing import Any, Callable, Dict, List, Union
 from aether.python.redis.task import Task, TaskEvent
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
+from werkzeug.local import LocalProxy
 
 from .logger import get_logger
 from .helpers import classproperty, require_property
@@ -153,7 +153,7 @@ class BaseResource(metaclass=ABCMeta):
 
     @classmethod
     def _validate_pretty(cls, definition, *args, **kwargs):
-        if isinstance(definition, flask.Request):
+        if isinstance(definition, LocalProxy):
             definition = definition.get_json()
         if cls._validate(definition):
             return {'valid': True}
