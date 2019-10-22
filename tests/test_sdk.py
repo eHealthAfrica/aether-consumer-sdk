@@ -351,12 +351,12 @@ def test_resource__basic_method():
 
 @pytest.mark.unit
 def test_resource__basic_describe_static():
-    assert(len(TestResource._describe_static()) == 2)
+    assert(len(TestResource._describe_static()) == 3)
 
 
 @pytest.mark.unit
 def test_resource__basic_describe_public():
-    assert(len(TestResource._describe()) == 2)
+    assert(len(TestResource._describe()) == 5)
 
 
 ######

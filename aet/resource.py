@@ -21,7 +21,7 @@
 
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
-from inspect import signature
+from inspect import signature, getdoc
 import json
 import queue
 from time import sleep
@@ -128,12 +128,17 @@ class BaseResource(metaclass=ABCMeta):
     def static_actions(cls) -> Dict[str, Callable]:
         return {
             'describe': cls._describe,
+            'get_schema': cls.get_schema,
             'validate_pretty': cls._validate_pretty
         }
 
     @classproperty
     def public_actions(self) -> List[str]:  # public interfaces for this type
-        return BASE_PUBLIC_ACTIONS + []
+        return BASE_PUBLIC_ACTIONS + [
+            'validate_pretty',
+            'describe',
+            'get_schema'
+        ]
 
     @classproperty
     def reference(cls) -> ResourceReference:
@@ -153,6 +158,11 @@ class BaseResource(metaclass=ABCMeta):
 
     @classmethod
     def _validate_pretty(cls, definition, *args, **kwargs):
+        '''
+        Return a lengthy validations.
+        {'valid': True} on success
+        {'valid': False, 'validation_errors': [errors...]} on failure
+        '''
         if isinstance(definition, LocalProxy):
             definition = definition.get_json()
         if cls._validate(definition):
@@ -170,16 +180,18 @@ class BaseResource(metaclass=ABCMeta):
 
     @classmethod
     def _describe(cls, *args, **kwargs):
-        description = []
+        '''
+        Described the available methods exposed by this resource type
+        '''
+        description = cls._describe_static()
         for action in cls.public_actions:
             try:
                 method = getattr(cls, action)
                 item = {'method': action}
                 item['signature'] = str(signature(method))
+                item['doc'] = getdoc(method)
                 description.append(item)
             except AttributeError:
-                if action not in BASE_PUBLIC_ACTIONS:
-                    LOG.error(f'{cls.__name__} has no method {action}')
                 pass
         return description
 
@@ -189,6 +201,7 @@ class BaseResource(metaclass=ABCMeta):
         for name, method in cls.static_actions.items():
             item = {'method': name}
             item['signature'] = str(signature(method))
+            item['doc'] = getdoc(method)
             description.append(item)
         return description
 
