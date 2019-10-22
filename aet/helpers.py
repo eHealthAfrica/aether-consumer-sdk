@@ -1,5 +1,3 @@
-
-
 class ClassPropertyDescriptor(object):
     '''
     Allows definition of a @classproperty

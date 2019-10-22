@@ -56,10 +56,7 @@ class APIServer(object):
         type(self)._allowed_types = {
             _cls.name: _cls.public_actions for _cls in consumer.job_class._resources
         }
-        type(self)._allowed_types['job'] = [
-            'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE',  # These are generic crud
-            'PAUSE', 'RESUME', 'STATUS'  # These are only valid for jobs
-        ]
+        type(self)._allowed_types['job'] = consumer.job_class.public_actions
         LOG.debug(f'Allowed Operations: {type(self)._allowed_types}')
         self.settings = settings
         self.consumer = consumer

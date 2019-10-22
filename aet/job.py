@@ -18,24 +18,27 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
 from copy import deepcopy
 import enum
-import json
 from time import sleep
 from threading import Thread
 from typing import Any, Callable, Dict, List, Union
 
 from aether.python.redis.task import Task, TaskEvent, TaskHelper
-from jsonschema import Draft7Validator
-from jsonschema.exceptions import ValidationError
 
 from .helpers import classproperty, require_property
 from .jsonpath import CachedParser
 from .logger import get_logger
-from .resource import BaseResource, InstanceManager, ResourceReference
+from .resource import BaseResource, InstanceManager, ResourceReference, AbstractResource
 
 LOG = get_logger('Job')
+
+BASE_PUBLIC_ACTIONS = [
+    'PAUSE',
+    'RESUME',
+    'STATUS'  # These are only valid for jobs
+]
 
 
 class JobStatus(enum.Enum):
@@ -61,7 +64,7 @@ class JobReference(object):
         self.redis_path = f'{self.redis_name}*'
 
 
-class BaseJob(metaclass=ABCMeta):
+class BaseJob(AbstractResource):
 
     _id: str
     status: JobStatus = JobStatus.PAUSED
@@ -79,50 +82,17 @@ class BaseJob(metaclass=ABCMeta):
     tenant: str  # tenant for this job
     validator: Any = None  # jsonschema validation object
 
+    public_actions = AbstractResource.public_actions + BASE_PUBLIC_ACTIONS
+
     @property
     @abstractmethod  # required
     def _resources(self) -> List[BaseResource]:
         return []
 
-    @property
-    @abstractmethod  # required
-    def name(self) -> str:
-        return None
-
-    @property
-    @abstractmethod  # required
-    def schema():
-        return None  # jsonschema for job instructions
-
     @classproperty
     def reference(cls) -> JobReference:
         name = require_property(cls.name)
         return JobReference(name)
-
-    @classmethod
-    def _validate(cls, definition) -> bool:
-        if not cls.validator:
-            cls.validator = Draft7Validator(json.loads(cls.schema))
-        try:
-            cls.validator.validate(definition)
-            return True
-        except ValidationError:
-            return False
-
-    @classmethod
-    def _validate_pretty(cls, definition):
-        if cls._validate(definition):
-            return {'valid': True}
-        else:
-            errors = sorted(cls.validator.iter_errors(definition), key=str)
-            return {
-                'valid': False,
-                'validation_errors': [str(e) for e in errors]
-            }
-
-    @classmethod
-    def get_schema(cls):
-        return cls.schema
 
     def __init__(self, _id: str, tenant: str, resources: InstanceManager):
         self._id = _id

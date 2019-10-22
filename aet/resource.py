@@ -38,76 +38,19 @@ from .helpers import classproperty, require_property
 
 LOG = get_logger('Resource')
 
-BASE_PUBLIC_ACTIONS = ['READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE']
+BASE_PUBLIC_ACTIONS = [
+    'READ',
+    'CREATE',
+    'DELETE',
+    'LIST',
+    'VALIDATE',
+    'validate_pretty',
+    'describe',
+    'get_schema'
+]
 
 
-class ResourceReference(object):
-    redis_type: str
-    redis_name: str
-    redis_path: str
-    job_path: str
-    _class: Callable  # BaseResource
-
-    def __init__(self, name, job_path, _class):
-        self.job_path = job_path
-        self._class = _class
-        self.make_paths(name)
-
-    def make_paths(self, name):
-        name = name.lower()
-        self.redis_type = f'{name}'
-        self.redis_name = f'_{name}:'
-        self.redis_path = f'{self.redis_name}*'
-
-
-def lock(f):
-    # Unlocked / Prioritized by InstanceManager._delegate
-    def wrapper(self, *args, **kwargs):
-        marker = None
-        priority = 5
-        stamp = datetime.now()
-        if '__queue_priority' in kwargs:
-            priority = kwargs['__queue_priority']
-            del kwargs['__queue_priority']
-        LOG.debug(f'{self.id} -> {f.__name__} must wait')
-        marker = threading.Lock()
-        marker.acquire()  # lock it and put it into the queue
-        self.waiting_line.put(tuple([priority, stamp, marker]))
-        # wait for the marker to be unlocked or the kill signal
-        while marker.locked() and not self._stopped:
-            sleep(.01)
-        if self._stopped:
-            marker.release()
-            raise RuntimeError('Resource Stopped before action could be completed.')
-        # mark the resource as used
-        self.lock.acquire(blocking=False)
-        marker = None
-
-        try:
-            LOG.debug(f'{self.id} servicing {priority}, {stamp}')
-            res = f(self, *args, **kwargs)
-            return res
-        except Exception as err:
-            raise err
-        finally:
-            LOG.debug(f'{self.id} DONE {priority}, {stamp}')
-            self.lock.release()
-    return wrapper
-
-
-class BaseResource(metaclass=ABCMeta):
-
-    # instance vars
-
-    id: str
-    definition: str  # implementation of the def described in the schema
-    # requires no instance to execute
-    validator: Any = None
-    lock: threading.Lock
-    waiting_line: queue.PriorityQueue
-    _stopped: bool
-
-    # class attributes
+class AbstractResource(metaclass=ABCMeta):
 
     @property
     @abstractmethod
@@ -119,11 +62,6 @@ class BaseResource(metaclass=ABCMeta):
     def name(self) -> str:  # must be unique per consumer!
         return self._name
 
-    @property
-    @abstractmethod
-    def jobs_path(self) -> str:  # The jsonpath to this resource in the Calling Job
-        return self._jobs_path
-
     @classproperty
     def static_actions(cls) -> Dict[str, Callable]:
         return {
@@ -134,17 +72,7 @@ class BaseResource(metaclass=ABCMeta):
 
     @classproperty
     def public_actions(self) -> List[str]:  # public interfaces for this type
-        return BASE_PUBLIC_ACTIONS + [
-            'validate_pretty',
-            'describe',
-            'get_schema'
-        ]
-
-    @classproperty
-    def reference(cls) -> ResourceReference:
-        _name = require_property(cls.name)
-        _jobs_path = require_property(cls.jobs_path)
-        return ResourceReference(_name, _jobs_path, cls)
+        return BASE_PUBLIC_ACTIONS + []
 
     @classmethod
     def _validate(cls, definition) -> bool:
@@ -207,6 +135,86 @@ class BaseResource(metaclass=ABCMeta):
             item['doc'] = getdoc(method)
             description.append(item)
         return description
+
+
+class ResourceReference(object):
+    redis_type: str
+    redis_name: str
+    redis_path: str
+    job_path: str
+    _class: Callable  # BaseResource
+
+    def __init__(self, name, job_path, _class):
+        self.job_path = job_path
+        self._class = _class
+        self.make_paths(name)
+
+    def make_paths(self, name):
+        name = name.lower()
+        self.redis_type = f'{name}'
+        self.redis_name = f'_{name}:'
+        self.redis_path = f'{self.redis_name}*'
+
+
+def lock(f):
+    # Unlocked / Prioritized by InstanceManager._delegate
+    def wrapper(self, *args, **kwargs):
+        marker = None
+        priority = 5
+        stamp = datetime.now()
+        if '__queue_priority' in kwargs:
+            priority = kwargs['__queue_priority']
+            del kwargs['__queue_priority']
+        LOG.debug(f'{self.id} -> {f.__name__} must wait')
+        marker = threading.Lock()
+        marker.acquire()  # lock it and put it into the queue
+        self.waiting_line.put(tuple([priority, stamp, marker]))
+        # wait for the marker to be unlocked or the kill signal
+        while marker.locked() and not self._stopped:
+            sleep(.01)
+        if self._stopped:
+            marker.release()
+            raise RuntimeError('Resource Stopped before action could be completed.')
+        # mark the resource as used
+        self.lock.acquire(blocking=False)
+        marker = None
+
+        try:
+            LOG.debug(f'{self.id} servicing {priority}, {stamp}')
+            res = f(self, *args, **kwargs)
+            return res
+        except Exception as err:
+            raise err
+        finally:
+            LOG.debug(f'{self.id} DONE {priority}, {stamp}')
+            self.lock.release()
+    return wrapper
+
+
+class BaseResource(AbstractResource):
+
+    # instance vars
+
+    id: str
+    definition: str  # implementation of the def described in the schema
+    # requires no instance to execute
+    validator: Any = None
+    lock: threading.Lock
+    waiting_line: queue.PriorityQueue
+    _stopped: bool
+
+    # class attributes
+
+    @property
+    @abstractmethod
+    def jobs_path(self) -> str:  # The jsonpath to this resource in the Calling Job
+        return self._jobs_path
+
+    @classproperty
+    def reference(cls) -> ResourceReference:
+        _name = require_property(cls.name)
+        _jobs_path = require_property(cls.jobs_path)
+        return ResourceReference(_name, _jobs_path, cls)
 
     def __init__(self, definition):
         # should be validated before initialization
