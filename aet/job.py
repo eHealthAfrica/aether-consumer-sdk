@@ -358,7 +358,14 @@ class JobManager(object):
         else:
             return f'no job with id:{job_id}'
 
-    def dispatch_resource_call(self, tenant=None, _type=None, operation=None, _id=None, request=None):
+    def dispatch_resource_call(
+        self,
+        tenant=None,
+        _type=None,
+        operation=None,
+        _id=None,
+        request=None
+    ):
         return self.resources.dispatch(tenant, _type, operation, _id, request)
 
     #############

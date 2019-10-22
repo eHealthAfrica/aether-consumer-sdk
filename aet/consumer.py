@@ -27,8 +27,7 @@ import redis
 
 from .api import APIServer
 from .logger import get_logger
-from .job import JobManager, BaseJob
-from .resource import BaseResource
+from .job import JobManager
 from .settings import Settings
 
 LOG = get_logger('Consumer')
@@ -65,9 +64,9 @@ class BaseConsumer(object):
         if not redis_instance:
             redis_instance = type(self).get_redis(CON_CONF)
         self._classes = {
-            _cls.name: _cls for _cls in JOB_TYPE._resources
+            _cls.name: _cls for _cls in job_class._resources
         }
-        self._classes['job'] = JOB_TYPE
+        self._classes['job'] = job_class
         self.task = TaskHelper(
             self.consumer_settings,
             redis_instance=redis_instance)

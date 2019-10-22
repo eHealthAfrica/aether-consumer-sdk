@@ -187,13 +187,9 @@ class BaseResource(metaclass=ABCMeta):
     def _describe_static(cls):
         description = []
         for name, method in cls.static_actions.items():
-            try:
-                item = {'method': name}
-                item['signature'] = str(signature(method))
-                description.append(item)
-            except AttributeError:
-                LOG.error(f'{cls.__name__} has no method {action}')
-                pass
+            item = {'method': name}
+            item['signature'] = str(signature(method))
+            description.append(item)
         return description
 
     def __init__(self, definition):

@@ -52,6 +52,7 @@ case "$1" in
 
     test_unit )
         echo 'Running Unit Tests...'
+        flake8
         $PYTEST -m unit
     ;;
 
