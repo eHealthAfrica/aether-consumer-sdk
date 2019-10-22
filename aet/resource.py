@@ -128,7 +128,7 @@ class BaseResource(metaclass=ABCMeta):
     def static_actions(cls) -> Dict[str, Callable]:
         return {
             'describe': cls._describe,
-            'get_schema': cls.get_schema,
+            'get_schema': cls._get_schema,
             'validate_pretty': cls._validate_pretty
         }
 
@@ -175,7 +175,10 @@ class BaseResource(metaclass=ABCMeta):
             }
 
     @classmethod
-    def get_schema(cls):
+    def _get_schema(cls, *args, **kwargs):
+        '''
+        Returns the schema for instances of this resource
+        '''
         return cls.schema
 
     @classmethod
