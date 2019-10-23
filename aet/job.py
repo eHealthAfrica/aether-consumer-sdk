@@ -98,6 +98,7 @@ class BaseJob(AbstractResource):
         self._id = _id
         self.tenant = tenant
         self.resources = resources
+        self._setup()
         self._start()
 
     def set_config(self, config: dict) -> None:
@@ -146,6 +147,7 @@ class BaseJob(AbstractResource):
             LOG.critical(f'job {self._id} failed with critical error {fatal}')
             self.status = JobStatus.DEAD
 
+    @abstractmethod  # required
     def _get_messages(self, config):
         # probably needs custom implementation for each consumer
         return [1, 2]  # get from Kafka or...
@@ -153,6 +155,7 @@ class BaseJob(AbstractResource):
     def _handle_new_settings(self):
         pass
 
+    @abstractmethod  # required
     def _handle_messages(self, config, messages):
         # probably needs custom implementation for each consumer
         # Do something based on the messages
@@ -163,6 +166,11 @@ class BaseJob(AbstractResource):
         # intentionally cause the thread to crash for testing purposes
         # should yield status.DEAD and throw a critical message for TypeError
         self.value = None  # type: ignore
+
+    def _setup(self):
+        # runs before thread and allows for setup, we can also fault here if not
+        # configured properly
+        pass
 
     def _start(self):
         LOG.debug(f'Job {self._id} starting')
