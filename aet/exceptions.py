@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright (C) 2018 by eHealth Africa : http://www.eHealthAfrica.org
 #
 # See the NOTICE file distributed with this work for additional information
@@ -16,37 +18,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[bdist_wheel]
-universal = 0
+from flask import Response
 
 
-[metadata]
-license_file = LICENSE
-description-file = README.md
+class ConsumerHttpException(Exception):
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
 
-
-[aliases]
-test = pytest
-
-
-[tool:pytest]
-python_files = tests/test*.py
-addopts = --maxfail=1 -p no:warnings
- # For super verbose tests...
-# log_cli = 1
-# log_cli_level = DEBUG
-# log_cli_format = %(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)
-# log_cli_date_format=%Y-%m-%d %H:%M:%S
-
-
-[flake8]
-max-line-length = 100
-ignore =
-        F403,
-        F405,
-        W503,
-        W504
-exclude =
-    */.eggs/*
-    */__pycache__/*
-    */test_sdk.py
+    def as_response(self):
+        return Response(self.message, self.status_code)

@@ -26,6 +26,7 @@ from typing import ClassVar, Dict, List, TYPE_CHECKING, Union
 from flask import Flask, Request, Response, request, jsonify
 from webtest.http import StopableWSGIServer
 
+from .exceptions import ConsumerHttpException
 from .logger import get_logger
 from .settings import CONSUMER_CONFIG
 
@@ -314,7 +315,10 @@ class APIServer(object):
             return Response(f'Invalid type "{_type}".', 400)
         if operation not in _cls.public_actions:
             return Response(f'"{_type}" does not allow operation {operation}', 400)
-        res = self.consumer.dispatch(tenant, _type, operation, request)
+        try:
+            res = self.consumer.dispatch(tenant, _type, operation, request)
+        except ConsumerHttpException as che:
+            return che.as_response()
         if isinstance(res, Response):
             return res
         with self.app.app_context():

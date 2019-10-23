@@ -33,6 +33,7 @@ from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 from werkzeug.local import LocalProxy
 
+from .exceptions import ConsumerHttpException
 from .logger import get_logger
 from .helpers import classproperty, require_property
 
@@ -48,6 +49,18 @@ BASE_PUBLIC_ACTIONS = [
     'describe',
     'get_schema'
 ]
+
+
+class ResourceDefinition(dict):
+
+    def __getattr__(self, name):
+        try:
+            super().__getattr__(name)
+        except AttributeError:
+            result = self.get(name)
+            if not result:
+                raise AttributeError(f'{self.__class__.__name__} object has no attribute {name}')
+            return result
 
 
 class AbstractResource(metaclass=ABCMeta):
@@ -196,7 +209,7 @@ class BaseResource(AbstractResource):
     # instance vars
 
     id: str
-    definition: str  # implementation of the def described in the schema
+    definition: ResourceDefinition  # implementation of the def described in the schema
     # requires no instance to execute
     validator: Any = None
     lock: threading.Lock
@@ -216,13 +229,14 @@ class BaseResource(AbstractResource):
         _jobs_path = require_property(cls.jobs_path)
         return ResourceReference(_name, _jobs_path, cls)
 
-    def __init__(self, definition):
+    def __init__(self, tenant, definition):
         # should be validated before initialization
         self._stopped = False
         self.lock = threading.Lock()
         self.waiting_line = queue.PriorityQueue()
         self.id = definition['id']
-        self.definition = definition
+        self.definition = ResourceDefinition(definition)
+        self.tenant = tenant
         self._on_init()
 
     def _on_init(self):
@@ -230,7 +244,7 @@ class BaseResource(AbstractResource):
 
     @lock
     def update(self, definition):
-        self.definition = definition
+        self.definition = ResourceDefinition(definition)
         LOG.debug(f'{self.id} got new definition')
         self._on_change()
 
@@ -315,11 +329,7 @@ class InstanceManager(object):
         Get a resource class instance by name and ID
         '''
         key = self.format(_id, _type, tenant)
-        try:
-            return self.instances[key]
-        except KeyError:
-            LOG.warning(f'Expected key missing {key} : {list(self.instances.keys())}')
-            return None
+        return self.instances[key]
 
     def update(self, _id, _type, tenant, body):
         key = self.format(_id, _type, tenant)
@@ -338,7 +348,7 @@ class InstanceManager(object):
             thread.start()
             LOG.debug(f'Updating instance of {key}')
         else:
-            self.instances[key] = _cls(body)
+            self.instances[key] = _cls(tenant, body)
             LOG.debug(f'Created new instance of {key}, now: {list(self.instances.keys())}')
 
     def dispatch(self, tenant=None, _type=None, operation=None, _id=None, request=None):
@@ -346,10 +356,12 @@ class InstanceManager(object):
         try:
             inst = self.get(_id, _type, tenant)
             fn = getattr(inst, operation)
-            return fn(request)
+            res = fn(request)
+            return res
+        except KeyError:
+            raise ConsumerHttpException(f'No resource of type "{_type}" with id "{_id}"', 404)
         except Exception as err:
-            LOG.debug(f'Error in arbitrary function: {err}')
-            return err
+            raise ConsumerHttpException(repr(err), 500)
 
     def format(self, _id, _type, tenant):
         return f'{tenant}:{_type}:{_id}'
