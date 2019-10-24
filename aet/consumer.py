@@ -22,6 +22,7 @@ from time import sleep
 from typing import Any, ClassVar, Dict, List, Union
 
 from aether.python.redis.task import TaskHelper
+from confluent_kafka import KafkaError
 from flask import Response
 import redis
 
@@ -125,8 +126,15 @@ class BaseConsumer(object):
         if not _id:
             LOG.debug('Request is missing ID')
             return Response('Argument "id" is required', 400)
-        LOG.debug('Dispatching to job manager')
-        return self.job_manager.dispatch_resource_call(
+        if _type != 'job':
+            return self.job_manager.dispatch_resource_call(
+                tenant,
+                _type,
+                operation,
+                _id,
+                request
+            )
+        return self.job_manager.dispatch_job_call(
             tenant,
             _type,
             operation,

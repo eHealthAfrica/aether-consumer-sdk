@@ -56,7 +56,7 @@ setup(
         'pytest',
         'pytest-cov',
         'pytest-lazy-fixture',
-        'pytest-runner',
+        'pytest-runner'
     ],
     packages=find_packages(),
     namespace_packages=['aet'],

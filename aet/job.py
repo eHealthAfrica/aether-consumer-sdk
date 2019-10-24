@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, List, Union
 
 from aether.python.redis.task import Task, TaskEvent, TaskHelper
 
+from .exceptions import ConsumerHttpException
 from .helpers import classproperty, require_property
 from .jsonpath import CachedParser
 from .logger import get_logger
@@ -335,6 +336,26 @@ class JobManager(object):
             return self.jobs[job_id].get_status()
         else:
             return f'no job with id:{job_id}'
+
+    def dispatch_job_call(
+        self,
+        tenant=None,
+        _type=None,
+        operation=None,
+        _id=None,
+        request=None
+    ):
+        LOG.debug(f'Dispatching Job request {tenant}:{_type}:{operation}{_id}')
+        job_id = JobManager.get_job_id(_id, tenant)
+        if job_id not in self.jobs:
+            raise ConsumerHttpException(f'No resource of type "{_type}" with id "{_id}"', 404)
+        inst = self.jobs[job_id]
+        try:
+            fn = getattr(inst, operation)
+            res = fn(request)
+            return res
+        except Exception as err:
+            raise ConsumerHttpException(repr(err), 500)
 
     def dispatch_resource_call(
         self,
