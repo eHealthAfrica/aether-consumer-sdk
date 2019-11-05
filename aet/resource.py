@@ -297,7 +297,7 @@ class InstanceManager(object):
                     # if someone is in line, open them up
                     token = res.waiting_line.get(timeout=0)
                     priority, stamp, marker = token
-                    LOG.debug(f'Tapping {priority}, {stamp}')
+                    LOG.debug(f'Tapping P{priority}, {stamp} -> {k}')
                     marker.release()
                     res.lock.acquire(blocking=False)
                 except queue.Empty:
@@ -329,7 +329,10 @@ class InstanceManager(object):
         Get a resource class instance by name and ID
         '''
         key = self.format(_id, _type, tenant)
-        return self.instances[key]
+        try:
+            return self.instances[key]
+        except KeyError:
+            return None
 
     def update(self, _id, _type, tenant, body):
         key = self.format(_id, _type, tenant)

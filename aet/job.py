@@ -133,6 +133,7 @@ class BaseJob(AbstractResource):
                 config = deepcopy(self.config)
                 if not config:
                     # config changed in flight, try again
+                    self.safe_sleep(self.sleep_delay)  # wait for the status to change
                     continue
                 try:
                     LOG.debug(f'{self._id} -> {self.status}')
@@ -193,11 +194,13 @@ class BaseJob(AbstractResource):
         path = _cls.reference.job_path
         matches = CachedParser.find(path, config)
         if not matches:
-            LOG.debug(f'{self._id} found no resources in {matches}, {path} -> {config}')
+            LOG.debug(f'{self._id} found no resources in path: {path}.')
             return []
         resource_ids = [m.value for m in matches][0]
         LOG.debug(f'{self._id} found resource ids {resource_ids}')
         resources = []
+        if isinstance(resource_ids, str):
+            resource_ids = [resource_ids]
         for _id in resource_ids:
             res = self.get_resource(_type, _id)
             if res:
@@ -210,6 +213,9 @@ class BaseJob(AbstractResource):
         return self.resources.get(_id, _type, self.tenant)
 
     def safe_sleep(self, dur):
+        if not isinstance(dur, int):
+            sleep(dur)
+            return
         for x in range(dur):
             if self.status == JobStatus.STOPPED:
                 break
@@ -345,7 +351,7 @@ class JobManager(object):
         _id=None,
         request=None
     ):
-        LOG.debug(f'Dispatching Job request {tenant}:{_type}:{operation}{_id}')
+        LOG.debug(f'Dispatching Job request {_id} -> {tenant}:{_type}:{operation}')
         job_id = JobManager.get_job_id(_id, tenant)
         if job_id not in self.jobs:
             raise ConsumerHttpException(f'No resource of type "{_type}" with id "{_id}"', 404)
