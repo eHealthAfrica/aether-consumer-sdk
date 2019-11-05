@@ -65,6 +65,16 @@ topic_size = 500
 TestResourceDef1 = {'id': '1', 'username': 'user', 'password': 'pw'}
 
 
+class BadResource(BaseResource):
+    # Missing required attributes
+    pass
+
+
+class BadJob(BaseJob):
+    # Missing required attributes
+    pass
+
+
 class TestResource(BaseResource):
 
     name = 'resource'

@@ -19,13 +19,11 @@
 # under the License.
 
 from copy import copy
-from datetime import datetime
-import threading
 
 import requests
 
 from . import *  # noqa
-from aet.job import BaseJob, JobStatus
+from aet.job import JobStatus
 from aet.logger import get_logger
 from aether.python.redis.task import LOG as task_log
 
@@ -327,6 +325,14 @@ def test_msk_msg_custom_map(offline_consumer,
 #####
 
 @pytest.mark.unit
+def test_bad_resource_missing_attrs():
+    with pytest.raises(TypeError):
+        BadResource()
+    with pytest.raises(TypeError):
+        BadJob()
+
+
+@pytest.mark.unit
 def test_resource__basic_validate_pass():
     assert(TestResource._validate_pretty(TestResourceDef1))
 
@@ -345,7 +351,8 @@ def test_resource__basic_validate_fail_verbose():
 
 @pytest.mark.unit
 def test_resource__basic_method():
-    res = TestResource(TestResourceDef1)
+    tenant = 'test-1'
+    res = TestResource(tenant, TestResourceDef1)
     assert(res.upper('username') == 'USER')
 
 

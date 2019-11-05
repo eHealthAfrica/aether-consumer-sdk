@@ -33,12 +33,121 @@ from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 from werkzeug.local import LocalProxy
 
+from .exceptions import ConsumerHttpException
 from .logger import get_logger
 from .helpers import classproperty, require_property
 
 LOG = get_logger('Resource')
 
-BASE_PUBLIC_ACTIONS = ['READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE']
+BASE_PUBLIC_ACTIONS = [
+    'READ',
+    'CREATE',
+    'DELETE',
+    'LIST',
+    'VALIDATE',
+    'validate_pretty',
+    'describe',
+    'get_schema'
+]
+
+
+class ResourceDefinition(dict):
+
+    def __getattr__(self, name):
+        try:
+            super().__getattr__(name)
+        except AttributeError:
+            result = self.get(name)
+            if not result:
+                raise AttributeError(f'{self.__class__.__name__} object has no attribute {name}')
+            return result
+
+
+class AbstractResource(metaclass=ABCMeta):
+
+    @property
+    @abstractmethod
+    def schema(self) -> str:  # the implementation of this resource, as stringified jsonschema
+        return self.schema
+
+    @property
+    @abstractmethod
+    def name(self) -> str:  # must be unique per consumer!
+        return self._name
+
+    @classproperty
+    def static_actions(cls) -> Dict[str, Callable]:
+        return {
+            'describe': cls._describe,
+            'get_schema': cls._get_schema,
+            'validate_pretty': cls._validate_pretty
+        }
+
+    @classproperty
+    def public_actions(self) -> List[str]:  # public interfaces for this type
+        return BASE_PUBLIC_ACTIONS + []
+
+    @classmethod
+    def _validate(cls, definition) -> bool:
+        if not cls.validator:
+            cls.validator = Draft7Validator(json.loads(cls.schema))
+        try:
+            cls.validator.validate(definition)
+            return True
+        except ValidationError:
+            return False
+
+    @classmethod
+    def _validate_pretty(cls, definition, *args, **kwargs):
+        '''
+        Return a lengthy validations.
+        {'valid': True} on success
+        {'valid': False, 'validation_errors': [errors...]} on failure
+        '''
+        if isinstance(definition, LocalProxy):
+            definition = definition.get_json()
+        if cls._validate(definition):
+            return {'valid': True}
+        else:
+            errors = sorted(cls.validator.iter_errors(definition), key=str)
+            return {
+                'valid': False,
+                'validation_errors': [str(e) for e in errors]
+            }
+
+    @classmethod
+    def _get_schema(cls, *args, **kwargs):
+        '''
+        Returns the schema for instances of this resource
+        '''
+        return cls.schema
+
+    @classmethod
+    def _describe(cls, *args, **kwargs):
+        '''
+        Described the available methods exposed by this resource type
+        '''
+        description = cls._describe_static()
+        for action in cls.public_actions:
+            try:
+                method = getattr(cls, action)
+                item = {'method': action}
+                item['signature'] = str(signature(method))
+                item['doc'] = getdoc(method)
+                description.append(item)
+            except AttributeError:
+                pass
+        return description
+
+    @classmethod
+    def _describe_static(cls):
+        description = []
+        for name, method in cls.static_actions.items():
+            item = {'method': name}
+            item['signature'] = str(signature(method))
+            item['doc'] = getdoc(method)
+            description.append(item)
+        return description
 
 
 class ResourceReference(object):
@@ -95,12 +204,12 @@ def lock(f):
     return wrapper
 
 
-class BaseResource(metaclass=ABCMeta):
+class BaseResource(AbstractResource):
 
     # instance vars
 
     id: str
-    definition: str  # implementation of the def described in the schema
+    definition: ResourceDefinition  # implementation of the def described in the schema
     # requires no instance to execute
     validator: Any = None
     lock: threading.Lock
@@ -111,34 +220,8 @@ class BaseResource(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def schema(self) -> str:  # the implementation of this resource, as stringified jsonschema
-        return self.schema
-
-    @property
-    @abstractmethod
-    def name(self) -> str:  # must be unique per consumer!
-        return self._name
-
-    @property
-    @abstractmethod
     def jobs_path(self) -> str:  # The jsonpath to this resource in the Calling Job
         return self._jobs_path
-
-    @classproperty
-    def static_actions(cls) -> Dict[str, Callable]:
-        return {
-            'describe': cls._describe,
-            'get_schema': cls.get_schema,
-            'validate_pretty': cls._validate_pretty
-        }
-
-    @classproperty
-    def public_actions(self) -> List[str]:  # public interfaces for this type
-        return BASE_PUBLIC_ACTIONS + [
-            'validate_pretty',
-            'describe',
-            'get_schema'
-        ]
 
     @classproperty
     def reference(cls) -> ResourceReference:
@@ -146,72 +229,14 @@ class BaseResource(metaclass=ABCMeta):
         _jobs_path = require_property(cls.jobs_path)
         return ResourceReference(_name, _jobs_path, cls)
 
-    @classmethod
-    def _validate(cls, definition) -> bool:
-        if not cls.validator:
-            cls.validator = Draft7Validator(json.loads(cls.schema))
-        try:
-            cls.validator.validate(definition)
-            return True
-        except ValidationError:
-            return False
-
-    @classmethod
-    def _validate_pretty(cls, definition, *args, **kwargs):
-        '''
-        Return a lengthy validations.
-        {'valid': True} on success
-        {'valid': False, 'validation_errors': [errors...]} on failure
-        '''
-        if isinstance(definition, LocalProxy):
-            definition = definition.get_json()
-        if cls._validate(definition):
-            return {'valid': True}
-        else:
-            errors = sorted(cls.validator.iter_errors(definition), key=str)
-            return {
-                'valid': False,
-                'validation_errors': [str(e) for e in errors]
-            }
-
-    @classmethod
-    def get_schema(cls):
-        return cls.schema
-
-    @classmethod
-    def _describe(cls, *args, **kwargs):
-        '''
-        Described the available methods exposed by this resource type
-        '''
-        description = cls._describe_static()
-        for action in cls.public_actions:
-            try:
-                method = getattr(cls, action)
-                item = {'method': action}
-                item['signature'] = str(signature(method))
-                item['doc'] = getdoc(method)
-                description.append(item)
-            except AttributeError:
-                pass
-        return description
-
-    @classmethod
-    def _describe_static(cls):
-        description = []
-        for name, method in cls.static_actions.items():
-            item = {'method': name}
-            item['signature'] = str(signature(method))
-            item['doc'] = getdoc(method)
-            description.append(item)
-        return description
-
-    def __init__(self, definition):
+    def __init__(self, tenant, definition):
         # should be validated before initialization
         self._stopped = False
         self.lock = threading.Lock()
         self.waiting_line = queue.PriorityQueue()
         self.id = definition['id']
-        self.definition = definition
+        self.definition = ResourceDefinition(definition)
+        self.tenant = tenant
         self._on_init()
 
     def _on_init(self):
@@ -219,7 +244,7 @@ class BaseResource(metaclass=ABCMeta):
 
     @lock
     def update(self, definition):
-        self.definition = definition
+        self.definition = ResourceDefinition(definition)
         LOG.debug(f'{self.id} got new definition')
         self._on_change()
 
@@ -272,7 +297,7 @@ class InstanceManager(object):
                     # if someone is in line, open them up
                     token = res.waiting_line.get(timeout=0)
                     priority, stamp, marker = token
-                    LOG.debug(f'Tapping {priority}, {stamp}')
+                    LOG.debug(f'Tapping P{priority}, {stamp} -> {k}')
                     marker.release()
                     res.lock.acquire(blocking=False)
                 except queue.Empty:
@@ -307,7 +332,6 @@ class InstanceManager(object):
         try:
             return self.instances[key]
         except KeyError:
-            LOG.warning(f'Expected key missing {key} : {list(self.instances.keys())}')
             return None
 
     def update(self, _id, _type, tenant, body):
@@ -327,7 +351,7 @@ class InstanceManager(object):
             thread.start()
             LOG.debug(f'Updating instance of {key}')
         else:
-            self.instances[key] = _cls(body)
+            self.instances[key] = _cls(tenant, body)
             LOG.debug(f'Created new instance of {key}, now: {list(self.instances.keys())}')
 
     def dispatch(self, tenant=None, _type=None, operation=None, _id=None, request=None):
@@ -335,10 +359,12 @@ class InstanceManager(object):
         try:
             inst = self.get(_id, _type, tenant)
             fn = getattr(inst, operation)
-            return fn(request)
+            res = fn(request)
+            return res
+        except KeyError:
+            raise ConsumerHttpException(f'No resource of type "{_type}" with id "{_id}"', 404)
         except Exception as err:
-            LOG.debug(f'Error in arbitrary function: {err}')
-            return err
+            raise ConsumerHttpException(repr(err), 500)
 
     def format(self, _id, _type, tenant):
         return f'{tenant}:{_type}:{_id}'

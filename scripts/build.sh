@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+#
 # Copyright (C) 2018 by eHealth Africa : http://www.eHealthAfrica.org
 #
 # See the NOTICE file distributed with this work for additional information
@@ -15,38 +17,28 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+#
+set -Eeuo pipefail
 
-[bdist_wheel]
-universal = 0
+# ----------------------------------------
+# remove previous packages if needed
+# ----------------------------------------
+rm -rf dist
+rm -rf build
+rm -rf .eggs
+rm -rf aet.consumer.egg-info
 
+# ----------------------------------------
+# create the distribution package
+# ----------------------------------------
+python3 setup.py bdist_wheel
 
-[metadata]
-license_file = LICENSE
-description-file = README.md
+# ----------------------------------------
+# remove useless content
+# ----------------------------------------
+rm -rf build
+rm -rf aet.consumer.egg-info
 
-
-[aliases]
-test = pytest
-
-
-[tool:pytest]
-python_files = tests/test*.py
-addopts = --maxfail=1 -p no:warnings
- # For super verbose tests...
-#log_cli = 1
-#log_cli_level = INFO
-# log_cli_format = %(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)
-# log_cli_date_format=%Y-%m-%d %H:%M:%S
-
-
-[flake8]
-max-line-length = 100
-ignore =
-        F403,
-        F405,
-        W503,
-        W504
-exclude =
-    */.eggs/*
-    */__pycache__/*
-    */test_sdk.py
+# ----------------------------------------
+# upload to PyPi repository
+# ----------------------------------------

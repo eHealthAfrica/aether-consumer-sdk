@@ -18,24 +18,28 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
 from copy import deepcopy
 import enum
-import json
 from time import sleep
 from threading import Thread
 from typing import Any, Callable, Dict, List, Union
 
 from aether.python.redis.task import Task, TaskEvent, TaskHelper
-from jsonschema import Draft7Validator
-from jsonschema.exceptions import ValidationError
 
+from .exceptions import ConsumerHttpException
 from .helpers import classproperty, require_property
 from .jsonpath import CachedParser
 from .logger import get_logger
-from .resource import BaseResource, InstanceManager, ResourceReference
+from .resource import BaseResource, InstanceManager, ResourceReference, AbstractResource
 
 LOG = get_logger('Job')
+
+BASE_PUBLIC_ACTIONS = [
+    'PAUSE',
+    'RESUME',
+    'STATUS'  # These are only valid for jobs
+]
 
 
 class JobStatus(enum.Enum):
@@ -61,7 +65,7 @@ class JobReference(object):
         self.redis_path = f'{self.redis_name}*'
 
 
-class BaseJob(metaclass=ABCMeta):
+class BaseJob(AbstractResource):
 
     _id: str
     status: JobStatus = JobStatus.PAUSED
@@ -79,55 +83,23 @@ class BaseJob(metaclass=ABCMeta):
     tenant: str  # tenant for this job
     validator: Any = None  # jsonschema validation object
 
+    public_actions = AbstractResource.public_actions + BASE_PUBLIC_ACTIONS
+
     @property
     @abstractmethod  # required
     def _resources(self) -> List[BaseResource]:
         return []
-
-    @property
-    @abstractmethod  # required
-    def name(self) -> str:
-        return None
-
-    @property
-    @abstractmethod  # required
-    def schema():
-        return None  # jsonschema for job instructions
 
     @classproperty
     def reference(cls) -> JobReference:
         name = require_property(cls.name)
         return JobReference(name)
 
-    @classmethod
-    def _validate(cls, definition) -> bool:
-        if not cls.validator:
-            cls.validator = Draft7Validator(json.loads(cls.schema))
-        try:
-            cls.validator.validate(definition)
-            return True
-        except ValidationError:
-            return False
-
-    @classmethod
-    def _validate_pretty(cls, definition):
-        if cls._validate(definition):
-            return {'valid': True}
-        else:
-            errors = sorted(cls.validator.iter_errors(definition), key=str)
-            return {
-                'valid': False,
-                'validation_errors': [str(e) for e in errors]
-            }
-
-    @classmethod
-    def get_schema(cls):
-        return cls.schema
-
     def __init__(self, _id: str, tenant: str, resources: InstanceManager):
         self._id = _id
         self.tenant = tenant
         self.resources = resources
+        self._setup()
         self._start()
 
     def set_config(self, config: dict) -> None:
@@ -161,6 +133,7 @@ class BaseJob(metaclass=ABCMeta):
                 config = deepcopy(self.config)
                 if not config:
                     # config changed in flight, try again
+                    self.safe_sleep(self.sleep_delay)  # wait for the status to change
                     continue
                 try:
                     LOG.debug(f'{self._id} -> {self.status}')
@@ -176,6 +149,7 @@ class BaseJob(metaclass=ABCMeta):
             LOG.critical(f'job {self._id} failed with critical error {fatal}')
             self.status = JobStatus.DEAD
 
+    @abstractmethod  # required
     def _get_messages(self, config):
         # probably needs custom implementation for each consumer
         return [1, 2]  # get from Kafka or...
@@ -183,6 +157,7 @@ class BaseJob(metaclass=ABCMeta):
     def _handle_new_settings(self):
         pass
 
+    @abstractmethod  # required
     def _handle_messages(self, config, messages):
         # probably needs custom implementation for each consumer
         # Do something based on the messages
@@ -193,6 +168,11 @@ class BaseJob(metaclass=ABCMeta):
         # intentionally cause the thread to crash for testing purposes
         # should yield status.DEAD and throw a critical message for TypeError
         self.value = None  # type: ignore
+
+    def _setup(self):
+        # runs before thread and allows for setup, we can also fault here if not
+        # configured properly
+        pass
 
     def _start(self):
         LOG.debug(f'Job {self._id} starting')
@@ -214,11 +194,13 @@ class BaseJob(metaclass=ABCMeta):
         path = _cls.reference.job_path
         matches = CachedParser.find(path, config)
         if not matches:
-            LOG.debug(f'{self._id} found no resources in {matches}, {path} -> {config}')
+            LOG.debug(f'{self._id} found no resources in path: {path}.')
             return []
         resource_ids = [m.value for m in matches][0]
         LOG.debug(f'{self._id} found resource ids {resource_ids}')
         resources = []
+        if isinstance(resource_ids, str):
+            resource_ids = [resource_ids]
         for _id in resource_ids:
             res = self.get_resource(_type, _id)
             if res:
@@ -231,6 +213,9 @@ class BaseJob(metaclass=ABCMeta):
         return self.resources.get(_id, _type, self.tenant)
 
     def safe_sleep(self, dur):
+        if not isinstance(dur, int):
+            sleep(dur)
+            return
         for x in range(dur):
             if self.status == JobStatus.STOPPED:
                 break
@@ -357,6 +342,26 @@ class JobManager(object):
             return self.jobs[job_id].get_status()
         else:
             return f'no job with id:{job_id}'
+
+    def dispatch_job_call(
+        self,
+        tenant=None,
+        _type=None,
+        operation=None,
+        _id=None,
+        request=None
+    ):
+        LOG.debug(f'Dispatching Job request {_id} -> {tenant}:{_type}:{operation}')
+        job_id = JobManager.get_job_id(_id, tenant)
+        if job_id not in self.jobs:
+            raise ConsumerHttpException(f'No resource of type "{_type}" with id "{_id}"', 404)
+        inst = self.jobs[job_id]
+        try:
+            fn = getattr(inst, operation)
+            res = fn(request)
+            return res
+        except Exception as err:
+            raise ConsumerHttpException(repr(err), 500)
 
     def dispatch_resource_call(
         self,

@@ -21,7 +21,7 @@
 import os
 from setuptools import setup, find_packages
 
-VERSION = os.environ.get('VERSION', '3.0.0')
+VERSION = os.environ.get('VERSION', '3.0.6')
 
 setup(
     name='aet.consumer',
@@ -56,7 +56,7 @@ setup(
         'pytest',
         'pytest-cov',
         'pytest-lazy-fixture',
-        'pytest-runner',
+        'pytest-runner'
     ],
     packages=find_packages(),
     namespace_packages=['aet'],
