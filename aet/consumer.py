@@ -22,7 +22,6 @@ from time import sleep
 from typing import Any, ClassVar, Dict, List, Union
 
 from aether.python.redis.task import TaskHelper
-from confluent_kafka import KafkaError
 from flask import Response
 import redis
 
