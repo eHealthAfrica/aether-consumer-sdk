@@ -358,6 +358,8 @@ class InstanceManager(object):
         LOG.debug(f'Dispatching request {tenant}:{_type}:{operation}{_id}')
         try:
             inst = self.get(_id, _type, tenant)
+            if not inst:
+                raise KeyError
             fn = getattr(inst, operation)
             res = fn(request)
             return res
