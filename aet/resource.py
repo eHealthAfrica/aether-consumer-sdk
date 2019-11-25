@@ -59,7 +59,7 @@ class ResourceDefinition(dict):
         except AttributeError:
             result = self.get(name)
             if not result:
-                raise AttributeError(f'{self.__class__.__name__} object has no attribute {name}')
+                raise AttributeError(f'{self.__class__.__name__} has no attribute {name}')
             return result
 
 
@@ -365,6 +365,8 @@ class InstanceManager(object):
             return res
         except KeyError:
             raise ConsumerHttpException(f'No resource of type "{_type}" with id "{_id}"', 404)
+        except ConsumerHttpException as cer:
+            raise cer
         except Exception as err:
             raise ConsumerHttpException(repr(err), 500)
 
