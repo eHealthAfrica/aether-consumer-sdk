@@ -24,7 +24,10 @@ from flask import Response
 class ConsumerHttpException(Exception):
     def __init__(self, message: str, status_code: int):
         super().__init__(message)
-        self.message = message
+        if isinstance(message, BaseException):
+            self.message = str(message)
+        else:
+            self.message = message
         self.status_code = status_code
 
     def as_response(self):
