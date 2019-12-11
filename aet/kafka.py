@@ -55,7 +55,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
         "aether_masking_schema_annotation": "aetherMaskingLevel",
         "aether_masking_schema_levels": [0, 1, 2, 3, 4, 5],
         "aether_masking_schema_emit_level": 0,
-        "aether_emit_flag_required": True,
+        "aether_emit_flag_required": False,
         "aether_emit_flag_field_path": "$.approved",
         "aether_emit_flag_values": [True]
     }

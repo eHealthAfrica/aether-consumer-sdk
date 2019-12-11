@@ -18,6 +18,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from itertools import islice
+
 
 class ClassPropertyDescriptor(object):
     '''
@@ -56,3 +58,11 @@ def require_property(obj):
     if isinstance(obj, property):
         raise NotImplementedError(f'{obj.__name__} must be implemented.')
     return obj
+
+
+def chunk_iterable(_iter, size):
+    i = iter(_iter)
+    sub = list(islice(i, size))
+    while sub:
+        yield sub
+        sub = list(islice(i, size))
