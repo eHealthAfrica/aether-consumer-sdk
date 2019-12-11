@@ -606,7 +606,9 @@ def offline_consumer():
     consumer._add_config = add_config.__get__(consumer)
     # somehow the ADDITIONAL_CONFIG changes if you pass it directly.
     # Leave this deepcopy
-    consumer._set_config(deepcopy(KafkaConsumer.ADDITIONAL_CONFIG))
+    _configs = deepcopy(KafkaConsumer.ADDITIONAL_CONFIG)
+    _configs['aether_emit_flag_required'] = True  # we don't need to test the all_pass state
+    consumer._set_config(_configs)
     return consumer
 
 
