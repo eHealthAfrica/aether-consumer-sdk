@@ -287,10 +287,7 @@ class InstanceManager(object):
 
     def __delegate(self):
         while not self._stopped:
-            for k in list(self.instance.keys()):
-                res = self.instances.get(k)
-                if not res:
-                    continue
+            for k, res in self.instances.items():
                 try:
                     if self._stopped:
                         return
