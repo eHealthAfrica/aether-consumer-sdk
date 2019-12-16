@@ -257,7 +257,8 @@ def test_get_approval_filter(offline_consumer, field_path, field_value, pass_msg
         offline_consumer._add_config({"aether_emit_flag_field_path": field_path})
     if field_value:
         offline_consumer._add_config({"aether_emit_flag_values": field_value})
-    _filter = offline_consumer.get_approval_filter()
+    config = offline_consumer._default_filter_config()
+    _filter = offline_consumer.get_approval_filter(config)
     assert(_filter(pass_msg))
     assert(_filter(fail_msg) is not True)
 
@@ -284,7 +285,8 @@ def test_message_deserialize__failure(offline_consumer):
 @pytest.mark.unit
 def test_msk_msg_default_map(offline_consumer, sample_schema, sample_message, emit_level):
     offline_consumer._add_config({"aether_masking_schema_emit_level": emit_level})
-    mask = offline_consumer.get_mask_from_schema(sample_schema)
+    config = offline_consumer._default_mask_config()
+    mask = offline_consumer.get_mask_from_schema(sample_schema, config)
     masked = mask(sample_message)
     assert(len(masked.keys()) == (emit_level + 2)), ("%s %s" % (emit_level, masked))
 
@@ -313,7 +315,8 @@ def test_msk_msg_custom_map(offline_consumer,
                             expected_count):
     offline_consumer._add_config({"aether_masking_schema_emit_level": emit_level})
     offline_consumer._add_config({"aether_masking_schema_levels": possible_levels})
-    mask = offline_consumer.get_mask_from_schema(sample_schema_top_secret)
+    config = offline_consumer._default_mask_config()
+    mask = offline_consumer.get_mask_from_schema(sample_schema_top_secret, config)
     masked = mask(sample_message_top_secret)
     assert(len(masked.keys()) == (expected_count)), ("%s %s" % (emit_level, masked))
 

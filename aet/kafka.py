@@ -22,7 +22,12 @@ import ast
 from dataclasses import dataclass
 import io
 import json
-from typing import List
+from typing import (
+    Any,
+    Dict,
+    List,
+    Union
+)
 
 
 import confluent_kafka
@@ -48,6 +53,20 @@ class Message:
     headers: List = None
 
 
+@dataclass
+class FilterConfig:
+    check_condition_path: str               # path of condition
+    pass_conditions: Union[Any, List[Any]]  # pass value
+    requires_approval: bool = False         # default filter?
+
+
+@dataclass
+class MaskConfig:
+    mask_query: str                         # classifier jsonpath
+    mask_levels: List[Any]                  # classifier levels
+    emit_level: Any                         # chosen emit level
+
+
 class KafkaConsumer(confluent_kafka.Consumer):
 
     # Adding these key/ value pairs to those handled by vanilla KafkaConsumer
@@ -59,9 +78,13 @@ class KafkaConsumer(confluent_kafka.Consumer):
         "aether_emit_flag_field_path": "$.approved",
         "aether_emit_flag_values": [True]
     }
+    _topic_mask_configs: Dict[str, MaskConfig]
+    _topic_filter_configs: Dict[str, FilterConfig]
 
     def __init__(self, **kwargs):
         self.config = {}
+        self._topic_mask_configs = {}
+        self._topic_filter_configs = {}
         # Items not in either default or additional config raise KafkaConfigurationError on super
         for k, v in KafkaConsumer.ADDITIONAL_CONFIG.items():
             if k in kwargs:
@@ -71,7 +94,19 @@ class KafkaConsumer(confluent_kafka.Consumer):
                 self.config[k] = v
         super(KafkaConsumer, self).__init__(**kwargs)
 
-    def get_approval_filter(self):
+    def set_topic_filter_config(self, topic, config: FilterConfig):
+        self._topic_filter_configs[topic] = FilterConfig
+
+    def _default_filter_config(self) -> FilterConfig:
+        return FilterConfig(
+            requires_approval=self.config.get("aether_emit_flag_required"),
+            check_condition_path=self.config.get("aether_emit_flag_field_path"),
+            pass_conditions=self.config.get("aether_emit_flag_values"))
+
+    def _get_topic_filter_config(self, topic) -> FilterConfig:
+        return self._topic_filter_configs.get(topic, None)
+
+    def get_approval_filter(self, config: FilterConfig):
         # If {aether_emit_flag_required} is True, each message is checked for a passing value.
         # An approval filter is a flag set in the body of each message and found at path
         # {aether_emit_flag_field_path} that controls whether a message is published or not. If the
@@ -79,21 +114,18 @@ class KafkaConsumer(confluent_kafka.Consumer):
         # at {aether_emit_flag_values}, then the message will not be published. If the value is in
         # the set {aether_emit_flag_values}, it will be published. These rules resolve to a simple
         # boolean filter which is returned by this function.
-        requires_approval = self.config.get("aether_emit_flag_required")
-        if not requires_approval:
+        if not config.requires_approval:
             def approval_filter(obj):
                 return True
             return approval_filter
-        check_condition_path = self.config.get("aether_emit_flag_field_path")
-        pass_conditions = self.config.get("aether_emit_flag_values")
         check = None
-        if isinstance(pass_conditions, list):
+        if isinstance(config.pass_conditions, list):
             def check(x):
-                return x in pass_conditions
+                return x in config.pass_conditions
         else:
             def check(x):
-                return x == pass_conditions
-        expr = parse(check_condition_path)
+                return x == config.pass_conditions
+        expr = parse(config.check_condition_path)
 
         def approval_filter(msg):
             values = [match.value for match in expr.find(msg)]
@@ -102,28 +134,40 @@ class KafkaConsumer(confluent_kafka.Consumer):
             return check(values[0])  # We only check the first matching path/ value
         return approval_filter
 
-    def get_mask_from_schema(self, schema):
+    def set_topic_mask_config(self, topic, config: MaskConfig):
+        self._topic_mask_configs[topic] = config
+
+    def _default_mask_config(self):
+        return MaskConfig(
+            mask_query=self.config.get("aether_masking_schema_annotation"),
+            mask_levels=self.config.get("aether_masking_schema_levels"),
+            emit_level=self.config.get("aether_masking_schema_emit_level"))
+
+    def _get_topic_mask_config(self, topic):
+        return self._topic_mask_configs.get(topic, None)
+
+    def get_mask_from_schema(self, schema, config: MaskConfig):
         # This creates a masking function that will be applied to all messages emitted
-        # in poll_and_deserialize. Fields that may need to be masked must have in their
+        # in poll_and_deserialize, *IF a topic override does not exist..*
+        # Fields that may need to be masked must have in their
         # schema a signifier of their classification level. The jsonpath of that classifier
         # (mask_query) should be the same for all fields in a schema. Within the the message,
         # any field requiring classification should have a value associated with its field
         # level classification. That classification should match one of the levels passes to
         # the consumer (mask_levels). Fields over the approved classification (emit_level) as
         # ordered in (mask_levels) will be removed from the message before being emitted.
-
-        mask_query = self.config.get("aether_masking_schema_annotation")  # classifier jsonpath
-        mask_levels = self.config.get("aether_masking_schema_levels")     # classifier levels
-        emit_level = self.config.get("aether_masking_schema_emit_level")  # chosen level
         try:
-            emit_index = mask_levels.index(emit_level)
+            emit_index = config.mask_levels.index(config.emit_level)
         except ValueError:
             emit_index = -1  # emit level is off the scale, so we don't emit any classified data
-        query_string = "$.fields.[*].%s.`parent`" % mask_query  # parent node of matching field
+        # parent node of matching field
+        query_string = "$.fields.[*].%s.`parent`" % config.mask_query
         expr = parse(query_string)
         restricted_fields = [(match.value) for match in expr.find(schema)]
-        restriction_map = [[obj.get("name"), obj.get(mask_query)] for obj in restricted_fields]
-        failing_values = [i[1] for i in restriction_map if mask_levels.index(i[1]) > emit_index]
+        restriction_map = [
+            [obj.get("name"), obj.get(config.mask_query)] for obj in restricted_fields]
+        failing_values = [
+            i[1] for i in restriction_map if config.mask_levels.index(i[1]) > emit_index]
 
         def mask(msg):
             for name, field_level in restriction_map:
@@ -148,7 +192,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
         # implement masking and field filtering in this method, based on the consumer configuration
         # passed in __init__ and the schema of each message.
 
-        last_schema = None
+        last_schema = {}
         mask = None
         approval_filter = None
         result = []
@@ -173,7 +217,8 @@ class KafkaConsumer(confluent_kafka.Consumer):
                         reader,
                         last_schema,
                         mask,
-                        approval_filter
+                        approval_filter,
+                        topic
                 )
                 obj.close()  # don't forget to close your open IO object.
                 if package_result.get("schema") or len(package_result["messages"]) > 0:
@@ -215,7 +260,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
                         ))
         return result
 
-    def _reader_to_messages(self, reader, last_schema, mask, approval_filter):
+    def _reader_to_messages(self, reader, last_schema, mask, approval_filter, topic):
         package_result = {
             "schema": None,
             "messages": []
@@ -224,12 +269,15 @@ class KafkaConsumer(confluent_kafka.Consumer):
         # we get a mess of unicode that can't be json parsed so we need ast
         raw_schema = ast.literal_eval(str(reader.meta))
         schema = json.loads(raw_schema.get("avro.schema"))
-        if schema != last_schema:
-            last_schema = schema
+        filter_config = self._get_topic_filter_config(topic) or self._default_filter_config()
+        mask_config = self._get_topic_mask_config(topic) or self._default_mask_config()
+
+        if schema != last_schema.get(topic):
+            last_schema[topic] = schema
             package_result["schema"] = schema
             # prepare mask and filter
-            approval_filter = self.get_approval_filter()
-            mask = self.get_mask_from_schema(schema)
+            approval_filter = self.get_approval_filter(filter_config)
+            mask = self.get_mask_from_schema(schema, mask_config)
         else:
             package_result["schema"] = last_schema
         for x, msg in enumerate(reader):
