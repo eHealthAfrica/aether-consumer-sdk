@@ -94,10 +94,9 @@ def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args
     iter_consumer.subscribe([topic])
     # iter_consumer.seek_to_beginning()
     # more than a few hundres is too large to grab in one pass when not serialized
-    for x in range(int(3 * topic_size / 500)):
-        messages = iter_consumer.poll_and_deserialize(timeout=3, num_messages=1000)
+    for x in range(int(10 * topic_size / 500)):
+        messages = iter_consumer.poll_and_deserialize(timeout=3, num_messages=500)
         for msg in messages:
-            print('message!')
             if is_json:
                 _id = msg.value.get('id')
             else:
