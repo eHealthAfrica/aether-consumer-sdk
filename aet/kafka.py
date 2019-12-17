@@ -171,7 +171,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
 
         def mask(msg):
             for name, field_level in restriction_map:
-                if msg.get(name, None):  # message has a field with classification
+                if msg.get(name, None) is not None:  # message has a field with classification
                     if field_level in failing_values:  # classification is above threshold
                         msg.pop(name, None)
             return msg
