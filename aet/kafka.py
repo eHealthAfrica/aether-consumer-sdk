@@ -95,7 +95,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
         super(KafkaConsumer, self).__init__(**kwargs)
 
     def set_topic_filter_config(self, topic, config: FilterConfig):
-        self._topic_filter_configs[topic] = FilterConfig
+        self._topic_filter_configs[topic] = config
 
     def _default_filter_config(self) -> FilterConfig:
         return FilterConfig(
@@ -171,7 +171,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
 
         def mask(msg):
             for name, field_level in restriction_map:
-                if msg.get(name, None):  # message has a field with classification
+                if msg.get(name, None) is not None:  # message has a field with classification
                     if field_level in failing_values:  # classification is above threshold
                         msg.pop(name, None)
             return msg

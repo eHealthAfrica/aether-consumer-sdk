@@ -25,6 +25,7 @@ import requests
 from . import *  # noqa
 from aet.job import JobStatus
 from aet.logger import get_logger
+from aet.kafka import KafkaConsumer, FilterConfig, MaskConfig
 from aether.python.redis.task import LOG as task_log
 
 from aet.logger import wrap_logger
@@ -147,13 +148,14 @@ def test_masking_boolean_pass(default_consumer_args,
 
 
 @pytest.mark.kafka
-@pytest.mark.parametrize("emit_level,unmasked_fields", [
-    ("uncategorized", 2),
-    ("public", 3),
-    ("confidential", 4),
-    ("secret", 5),
-    ("top secret", 6),
-    ("ufos", 7),
+@pytest.mark.parametrize("emit_level,unmasked_fields,override", [
+    ("uncategorized", 2, None),
+    ("public", 3, None),
+    ("confidential", 4, None),
+    ("secret", 5, None),
+    ("top secret", 6, None),
+    ("ufos", 7, None),
+    ("uncategorized", 7, "ufos"),
 ])
 @pytest.mark.parametrize("masking_taxonomy", [
     (["public", "confidential", "secret", "top secret", "ufos"])
@@ -162,7 +164,8 @@ def test_masking_category_pass(default_consumer_args,
                                messages_test_secret_pass,
                                emit_level,
                                masking_taxonomy,
-                               unmasked_fields):
+                               unmasked_fields,
+                               override):
     topic = "TestTopSecret"
     assert(len(messages_test_secret_pass) ==
            topic_size), "Should have generated the right number of messages"
@@ -173,6 +176,13 @@ def test_masking_category_pass(default_consumer_args,
     # get messages for this emit level
     iter_consumer = KafkaConsumer(**consumer_kwargs)
     iter_consumer.subscribe([topic])
+    if override:
+        _config = MaskConfig(
+            mask_query=consumer_kwargs['aether_masking_schema_annotation'],
+            mask_levels=masking_taxonomy,
+            emit_level=override
+        )
+        iter_consumer.set_topic_mask_config(topic, _config)
     messages = iter_consumer.poll_and_deserialize(timeout=5, num_messages=1000)
     iter_consumer.close()
     # read messages and check masking
@@ -216,15 +226,17 @@ def test_publishing_boolean_pass(default_consumer_args,
 
 
 @pytest.mark.kafka
-@pytest.mark.parametrize("publish_on, expected_values", [
-    (["yes"], ["yes"]),
-    (["yes", "maybe"], ["yes", "maybe"]),
-    ("yes", ["yes"])
+@pytest.mark.parametrize("publish_on, expected_values, override", [
+    (["yes"], ["yes"], None),
+    (["yes", "maybe"], ["yes", "maybe"], None),
+    ("yes", ["yes"], None),
+    (["yes"], ["yes", "maybe"], ["yes", "maybe"]),
 ])
 def test_publishing_enum_pass(default_consumer_args,
                               messages_test_enum_pass,
                               publish_on,
-                              expected_values):
+                              expected_values,
+                              override):
     topic = "TestEnumPass"
     assert(len(messages_test_enum_pass) ==
            topic_size), "Should have generated the right number of messages"
@@ -235,6 +247,13 @@ def test_publishing_enum_pass(default_consumer_args,
     iter_consumer = KafkaConsumer(**consumer_kwargs)
     iter_consumer.subscribe([topic])
     iter_consumer.seek_to_beginning()
+    if override:
+        _config = FilterConfig(
+            check_condition_path=consumer_kwargs['aether_emit_flag_field_path'],
+            pass_conditions=override,
+            requires_approval=True
+        )
+        iter_consumer.set_topic_filter_config(topic, _config)
     messages = iter_consumer.poll_and_deserialize(timeout=5, num_messages=1000)
     iter_consumer.close()
     # read messages and check masking
