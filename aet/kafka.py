@@ -95,7 +95,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
         super(KafkaConsumer, self).__init__(**kwargs)
 
     def set_topic_filter_config(self, topic, config: FilterConfig):
-        self._topic_filter_configs[topic] = FilterConfig
+        self._topic_filter_configs[topic] = config
 
     def _default_filter_config(self) -> FilterConfig:
         return FilterConfig(
