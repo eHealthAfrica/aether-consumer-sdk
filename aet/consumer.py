@@ -19,7 +19,7 @@
 # under the License.
 
 from time import sleep
-from typing import Any, ClassVar, Dict, List, Union
+from typing import Any, ClassVar, Dict
 
 from aether.python.redis.task import TaskHelper
 from flask import Response
@@ -89,20 +89,6 @@ class BaseConsumer(object):
                 LOG.error(f'Consumer could not stop service {service_name}')
         sleep(.25)
         LOG.info('Shutdown Complete')
-
-    # Job API Functions that aren't pure delegation to Redis
-
-    def pause(self, _id: str, tenant: str = None) -> bool:
-        return self.job_manager.pause_job(_id)
-
-    def resume(self, _id, tenant: str = None) -> bool:
-        return self.job_manager.resume_job(_id)
-
-    def status(self, _id: Union[str, List[str]], tenant: str = None) -> List:
-        if isinstance(_id, str):
-            return [self.job_manager.get_job_status(_id)]
-        else:
-            return [self.job_manager.get_job_status(j_id) for j_id in _id]
 
     # Generic API Functions that aren't pure delegation to Redis
 

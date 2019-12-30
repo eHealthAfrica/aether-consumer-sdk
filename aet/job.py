@@ -35,12 +35,6 @@ from .resource import BaseResource, InstanceManager, ResourceReference, Abstract
 
 LOG = get_logger('Job')
 
-BASE_PUBLIC_ACTIONS = [
-    'PAUSE',
-    'RESUME',
-    'STATUS'  # These are only valid for jobs
-]
-
 
 class JobStatus(enum.Enum):
     STOPPED = 0
@@ -83,7 +77,12 @@ class BaseJob(AbstractResource):
     tenant: str  # tenant for this job
     validator: Any = None  # jsonschema validation object
 
-    public_actions = AbstractResource.public_actions + BASE_PUBLIC_ACTIONS
+    public_actions = AbstractResource.public_actions + [
+        # These are only valid for jobs
+        'pause',
+        'resume',
+        'get_status'
+    ]
 
     @property
     @abstractmethod  # required
@@ -102,6 +101,28 @@ class BaseJob(AbstractResource):
         self._setup()
         self._start()
 
+    # PUBLIC METHODS for job Management
+
+    def pause(self, *args, **kwargs):
+        '''
+            Temporarily Pause a job execution.
+            Will restart if the system resets. For a longer pause, remove the job via DELETE
+        '''
+        self.status = JobStatus.PAUSED
+        return True
+
+    def resume(self, *args, **kwargs):
+        '''
+            Resume the job after pausing it.
+        '''
+        self.status = JobStatus.NORMAL
+        return True
+
+    def get_status(self, *args, **kwargs) -> Union[Dict[str, Any], str]:
+        # externally available information about this job.
+        # At a minimum should return the running status
+        return str(self.status)
+
     def set_config(self, config: dict) -> None:
         LOG.debug(f'Job {self._id} got new config {config}')
         self.config = config
@@ -109,6 +130,8 @@ class BaseJob(AbstractResource):
             self._start()
         else:
             self.status = JobStatus.RECONFIGURE
+
+    # Base Loop for all jobs
 
     def _run(self):
         try:
@@ -179,11 +202,6 @@ class BaseJob(AbstractResource):
         self.status = JobStatus.NORMAL
         self._thread = Thread(target=self._run, daemon=True)
         self._thread.start()
-
-    def get_status(self) -> Union[Dict[str, Any], str]:
-        # externally available information about this job.
-        # At a minimum should return the running status
-        return str(self.status)
 
     def get_resources(self, _type, config) -> List[BaseResource]:
         _cls = [_cls for _cls in self._resources if _cls.name == _type]
@@ -313,35 +331,6 @@ class JobManager(object):
         if job_id in job_ids:
             self.jobs[job_id].stop()
             del self.jobs[job_id]
-
-    # Direct API Driven job control / visibility functions
-
-    def pause_job(self, _id: str, tenant: str) -> bool:
-        job_id = JobManager.get_job_id(_id, tenant)
-        LOG.debug(f'pausing job: {job_id}')
-        if job_id in self.jobs:
-            self.jobs[job_id].status = JobStatus.PAUSED
-            return True
-        else:
-            LOG.debug(f'Could not find job {job_id} to pause.')
-            return False
-
-    def resume_job(self, _id: str, tenant: str) -> bool:
-        job_id = JobManager.get_job_id(_id, tenant)
-        LOG.debug(f'resuming job: {job_id}')
-        if job_id in self.jobs:
-            self.jobs[job_id].status = JobStatus.NORMAL
-            return True
-        else:
-            LOG.debug(f'Could not find job {job_id} to pause.')
-            return False
-
-    def get_job_status(self, _id: str, tenant: str) -> Union[Dict[str, Any], str]:
-        job_id = JobManager.get_job_id(_id, tenant)
-        if job_id in self.jobs:
-            return self.jobs[job_id].get_status()
-        else:
-            return f'no job with id:{job_id}'
 
     def dispatch_job_call(
         self,
