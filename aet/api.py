@@ -350,7 +350,9 @@ class APIServer(object):
             if not _id:
                 return Response('Argument "id" is required', 400)
             try:
-                response = json.loads(str(self.task.get(_id, _type, tenant)))
+                response = json.loads(
+                    json.dumps(self.task.get(_id, _type, tenant))
+                )
             except ValueError:
                 response = {'error': f'{_type} object with id : {_id} not found'}
         if operation == 'LIST':
