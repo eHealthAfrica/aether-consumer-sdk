@@ -511,9 +511,8 @@ def test_api__bad_auth(mocked_api):
 @pytest.mark.unit
 def test_api__allowed_types(mocked_api):
     crud = ['READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE']
-    job_only = ['pause', 'resume', 'status']
     _allowed_types: Dict[str, List] = {
-        'job': crud + job_only,
+        'job': crud,
         'resource': crud
     }
     for name, allowed_ops in _allowed_types.items():
