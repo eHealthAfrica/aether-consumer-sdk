@@ -107,7 +107,7 @@ class BaseConsumer(object):
         if _fn:
             return _fn(request)
         # not a static function, needs an instance
-        _id = request.args.get('id', None)
+        _id = request.values.get('id', None)
         if not _id:
             LOG.debug('Request is missing ID')
             return Response('Argument "id" is required', 400)
