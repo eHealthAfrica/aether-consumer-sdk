@@ -612,12 +612,6 @@ def mocked_consumer():
 @pytest.mark.unit
 @pytest.fixture(scope="module")
 def mocked_api(mocked_consumer) -> Iterable[APIServer]:
-    # api = APIServer(
-    #     mocked_consumer,
-    #     mocked_consumer.task,
-    #     settings.CONSUMER_CONFIG
-    # )
-    # api.serve()
     yield mocked_consumer.api
     # teardown
     LOG.debug('Fixture api complete, stopping.')
