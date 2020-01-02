@@ -157,6 +157,7 @@ class TestResource(BaseResource):
 
 
 class TestJob(BaseJob):
+    name = 'TestJob'
     schema = '''
     {
       "type": "object",
@@ -165,6 +166,7 @@ class TestJob(BaseJob):
     }
     '''
     _resources = [TestResource]
+    public_actions = BaseJob.public_actions
 
 
 class IResource(BaseResource):
@@ -327,30 +329,14 @@ def get_fakeredis():
 
 
 class MockConsumer(BaseConsumer):
-
-    job_class = TestJob
-    _classes: ClassVar[Dict[str, Any]] = {
-        'resource': TestResource,
-        'job': TestJob
-    }
-
     def __init__(self, CON_CONF, KAFKA_CONF):
-        self.consumer_settings = CON_CONF
-        self.kafka_settings = KAFKA_CONF
-        self.children = []
-        self.task = TaskHelper(
-            self.consumer_settings,
-            get_fakeredis()
+        self.job_class = TestJob
+        super(MockConsumer, self).__init__(
+            CON_CONF,
+            KAFKA_CONF,
+            self.job_class,
+            redis_instance=get_fakeredis()
         )
-
-    def pause(self, *args, **kwargs) -> bool:
-        return True
-
-    def resume(self, *args, **kwargs) -> bool:
-        return True
-
-    def status(self, *args, **kwargs) -> List:
-        return []
 
 
 def send_plain_messages(producer, topic, schema, messages, encoding, is_json=True):
@@ -626,14 +612,9 @@ def mocked_consumer():
 @pytest.mark.unit
 @pytest.fixture(scope="module")
 def mocked_api(mocked_consumer) -> Iterable[APIServer]:
-    api = APIServer(
-        mocked_consumer,
-        mocked_consumer.task,
-        settings.CONSUMER_CONFIG
-    )
-    api.serve()
-    yield api
+    yield mocked_consumer.api
     # teardown
     LOG.debug('Fixture api complete, stopping.')
-    api.stop()
+    mocked_consumer.stop()
+    # api.stop()
     sleep(.5)

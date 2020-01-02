@@ -449,6 +449,7 @@ def test_cached_parser__bad_path():
                         ('job/get?id=fake', {'error': 'job object with id : fake not found'}, False),
                         ('job/get', None, True),
                         ('job/list', [], False),
+                        ('job/get_status?id=fake', {'error': 'job object with id : fake not found'}, True),
                         ('resource/delete?id=fake', False, False),
                         ('resource/delete', None, True),
                         ('resource/get', None, True),
@@ -470,7 +471,7 @@ def test_api_get_calls(call, result, raises_error, mocked_api):
         res.raise_for_status()
     except Exception as aer:
         LOG.debug(aer)
-        assert(raises_error)
+        assert(raises_error), res.content
         return
     try:
         val = res.json()
@@ -511,7 +512,7 @@ def test_api__bad_auth(mocked_api):
 @pytest.mark.unit
 def test_api__allowed_types(mocked_api):
     crud = ['READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE']
-    job_only = ['PAUSE', 'RESUME', 'STATUS']
+    job_only = ['pause', 'resume', 'get_status']
     _allowed_types: Dict[str, List] = {
         'job': crud + job_only,
         'resource': crud
@@ -523,15 +524,13 @@ def test_api__allowed_types(mocked_api):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("call,result,body,raises_error", [
+@pytest.mark.parametrize("call,result,json_body,raises_error", [
                         ('job/add', False, {'a': 'b'}, True),
                         ('job/update', False, {'a': 'b'}, True),
                         ('job/add', True, {}, True),
                         ('job/update', True, {}, True),
-                        ('job/status', [], {'id': 'someid'}, False),
-                        ('job/pause', True, {'id': 'someid'}, False),
-                        ('job/resume', True, {'id': 'someid'}, False),
                         ('job/validate', {'valid': False}, {'id': 'someid'}, False),
+                        ('job/pause?id=someid', {'valid': False}, {}, True),
                         ('resource/add', False, {'a': 'b'}, True),
                         ('resource/update', False, {'a': 'b'}, True),
                         ('resource/add', True, {'id': 'someid', 'username': 'user', 'password': 'pw1'}, False),
@@ -540,17 +539,17 @@ def test_api__allowed_types(mocked_api):
                         ('resource/pause', None, {'id': 'someid'}, True),
                         ('resource/resume', None, {'id': 'someid'}, True),
 ])
-def test_api_post_calls(call, result, body, raises_error, mocked_api):
+def test_api_post_calls(call, result, json_body, raises_error, mocked_api):
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
     pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
     auth = requests.auth.HTTPBasicAuth(user, pw)
     port = settings.CONSUMER_CONFIG.get('EXPOSE_PORT')
     url = f'http://localhost:{port}/{call}'
-    res = requests.post(url, auth=auth, json=body)
+    res = requests.post(url, auth=auth, json=json_body)
     try:
         res.raise_for_status()
     except Exception:
-        assert(raises_error)
+        assert(raises_error), res.content
         return
     try:
         val = res.json()
@@ -644,11 +643,11 @@ def test_itest_reinit_all_control_job(IJobManagerFNScope):
     key = f'{tenant}:{_id}'
     man = IJobManagerFNScope
     job = man.jobs[key]
-    man.pause_job(_id, tenant)
+    job.pause()
     assert(job.status == JobStatus.PAUSED)
-    man.resume_job(_id, tenant)
+    job.resume()
     assert(job.status == JobStatus.NORMAL)
-    res = man.get_job_status(_id, tenant)
+    res = job.get_status()
     assert(res is not None)
 
 

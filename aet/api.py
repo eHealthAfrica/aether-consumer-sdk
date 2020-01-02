@@ -168,21 +168,6 @@ class APIServer(object):
             self._list)
 
         self.register(
-            '<string:_type>/pause',
-            self.pause,
-            methods=['GET', 'POST'])
-
-        self.register(
-            '<string:_type>/resume',
-            self.resume,
-            methods=['GET', 'POST'])
-
-        self.register(
-            '<string:_type>/status',
-            self.status,
-            methods=['GET', 'POST'])
-
-        self.register(
             '<string:_type>/<string:operation>',
             self.handle_other,
             methods=['GET', 'POST'])
@@ -241,32 +226,6 @@ class APIServer(object):
     def request_healthcheck(self) -> Response:
         with self.app.app_context():
             return Response({"healthy": True})
-
-    # Job only (or needs custom implementation in consumer based on type)
-
-    @restrict_types('STATUS')
-    @requires_auth
-    @check_tenant
-    def status(self, tenant=None, _type=None, operation=None):
-        _id = request.args.get('id', None)
-        with self.app.app_context():
-            return jsonify(self.consumer.status(_id, tenant))
-
-    @restrict_types('PAUSE')
-    @requires_auth
-    @check_tenant
-    def pause(self, tenant=None, _type=None, operation=None):
-        _id = request.args.get('id', None)
-        with self.app.app_context():
-            return jsonify(self.consumer.pause(_id, tenant))
-
-    @restrict_types('RESUME')
-    @requires_auth
-    @check_tenant
-    def resume(self, tenant=None, _type=None, operation=None):
-        _id = request.args.get('id', None)
-        with self.app.app_context():
-            return jsonify(self.consumer.resume(_id, tenant))
 
     # Generic CRUD
 
@@ -350,7 +309,9 @@ class APIServer(object):
             if not _id:
                 return Response('Argument "id" is required', 400)
             try:
-                response = json.loads(str(self.task.get(_id, _type, tenant)))
+                response = json.loads(
+                    json.dumps(self.task.get(_id, _type, tenant))
+                )
             except ValueError:
                 response = {'error': f'{_type} object with id : {_id} not found'}
         if operation == 'LIST':
