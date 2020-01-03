@@ -99,7 +99,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
 
     def _default_filter_config(self) -> FilterConfig:
         return FilterConfig(
-            requires_approval=self.config.get("aether_emit_flag_required"),
+            requires_approval=self.config.get("aether_emit_flag_required", False),
             check_condition_path=self.config.get("aether_emit_flag_field_path"),
             pass_conditions=self.config.get("aether_emit_flag_values"))
 
@@ -139,7 +139,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
 
     def _default_mask_config(self):
         return MaskConfig(
-            mask_query=self.config.get("aether_masking_schema_annotation"),
+            mask_query=self.config.get("aether_masking_schema_annotation", None),
             mask_levels=self.config.get("aether_masking_schema_levels"),
             emit_level=self.config.get("aether_masking_schema_emit_level"))
 
@@ -156,6 +156,8 @@ class KafkaConsumer(confluent_kafka.Consumer):
         # level classification. That classification should match one of the levels passes to
         # the consumer (mask_levels). Fields over the approved classification (emit_level) as
         # ordered in (mask_levels) will be removed from the message before being emitted.
+        if not config or not config.mask_query:
+            return
         try:
             emit_index = config.mask_levels.index(config.emit_level)
         except ValueError:
@@ -205,6 +207,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
             topic = m.topic()
             obj = io.BytesIO()
             obj.write(m.value())
+            LOG.debug(f'{topic} | {offset}')
             try:
                 reader = DataFileReader(obj, DatumReader())
                 (

@@ -168,9 +168,9 @@ class BaseJob(AbstractResource):
                     self.safe_sleep(10)
             LOG.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
-            raise fatal
             LOG.critical(f'job {self._id} failed with critical error {fatal}')
             self.status = JobStatus.DEAD
+            return  # we still want to be able to read the logs so don't re-raise
 
     @abstractmethod  # required
     def _get_messages(self, config):
@@ -206,16 +206,14 @@ class BaseJob(AbstractResource):
     def get_resources(self, _type, config) -> List[BaseResource]:
         _cls = [_cls for _cls in self._resources if _cls.name == _type]
         if not _cls:
-            LOG.error(f'{self._id} found no resources of type "{_type}"')
             return []
         _cls = _cls[0]
         path = _cls.reference.job_path
         matches = CachedParser.find(path, config)
         if not matches:
-            LOG.debug(f'{self._id} found no resources in path: {path}.')
             return []
         resource_ids = [m.value for m in matches][0]
-        LOG.debug(f'{self._id} found resource ids {resource_ids}')
+        LOG.debug(f'{self._id}: found {_type} ids:  {resource_ids}')
         resources = []
         if isinstance(resource_ids, str):
             resource_ids = [resource_ids]
