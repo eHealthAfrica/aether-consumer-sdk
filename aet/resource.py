@@ -178,7 +178,6 @@ def lock(f):
         if '__queue_priority' in kwargs:
             priority = kwargs['__queue_priority']
             del kwargs['__queue_priority']
-        LOG.debug(f'{self.id} -> {f.__name__} must wait')
         marker = threading.Lock()
         marker.acquire()  # lock it and put it into the queue
         self.waiting_line.put(tuple([priority, stamp, marker]))
@@ -193,13 +192,11 @@ def lock(f):
         marker = None
 
         try:
-            LOG.debug(f'{self.id} servicing {priority}, {stamp}')
             res = f(self, *args, **kwargs)
             return res
         except Exception as err:
             raise err
         finally:
-            LOG.debug(f'{self.id} DONE {priority}, {stamp}')
             self.lock.release()
     return wrapper
 
@@ -301,7 +298,6 @@ class InstanceManager(object):
                     # if someone is in line, open them up
                     token = res.waiting_line.get(timeout=0)
                     priority, stamp, marker = token
-                    LOG.debug(f'Tapping P{priority}, {stamp} -> {k}')
                     marker.release()
                     res.lock.acquire(blocking=False)
                 except queue.Empty:

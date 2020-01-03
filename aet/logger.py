@@ -21,18 +21,41 @@
 
 from datetime import datetime
 import inspect
+import json
 import logging
 from .settings import CONSUMER_CONFIG
 
 
+class StackdriverFormatter(logging.Formatter):
+    # https://blog.frank-mich.com/python-logging-to-stackdriver/
+
+    def __init__(self, *args, **kwargs):
+        super(StackdriverFormatter, self).__init__(*args, **kwargs)
+
+    def format(self, record):
+        return json.dumps({
+            'severity': record.levelname,
+            'message': record.getMessage(),
+            'name': record.name
+        })
+
+
+REGISTERED_LOGGERS = []
+
+
 def get_logger(name):
     logger = logging.getLogger(name)
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
-        f'%(asctime)s [AET][{name}] %(levelname)-8s %(message)s'))
-    logger.addHandler(handler)
-    level = logging.getLevelName(CONSUMER_CONFIG.get('log_level', 'DEBUG'))
-    logger.setLevel(level)
+    if name not in REGISTERED_LOGGERS:
+        handler = logging.StreamHandler()
+        if str(CONSUMER_CONFIG.get('stackdriver_logging', False)) in ("yes", "true", "t", "1"):
+            handler.setFormatter(StackdriverFormatter())
+        else:
+            handler.setFormatter(logging.Formatter(
+                f'%(asctime)s [{name}] %(levelname)-8s %(message)s'))
+        logger.addHandler(handler)
+        level = logging.getLevelName(CONSUMER_CONFIG.get('log_level', 'DEBUG'))
+        logger.setLevel(level)
+        REGISTERED_LOGGERS.append(name)
     return logger
 
 # CallbackLogger can be used by instances to create a logger for themselves with a memory
