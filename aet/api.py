@@ -172,7 +172,7 @@ class APIServer(object):
             self.handle_other,
             methods=['GET', 'POST'])
 
-        self.register('healthcheck', self.request_healthcheck)
+        self.register('health', self.request_healthcheck)
 
     def register(self, route_name, fn, **options) -> None:
         self.app.add_url_rule('/%s' % route_name, route_name, view_func=fn, **options)
