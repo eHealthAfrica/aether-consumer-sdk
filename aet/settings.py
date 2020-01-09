@@ -43,10 +43,7 @@ class Settings(dict):
         try:
             super().__getattr__(name)
         except AttributeError:
-            result = self.get(name)
-            if not result:
-                raise AttributeError(f'{self.__class__.__name__} object has no attribute {name}')
-            return result
+            return self.get(name)
 
     def __getitem__(self, key):
         if self.alias and key in self.alias:
