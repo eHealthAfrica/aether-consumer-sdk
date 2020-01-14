@@ -79,6 +79,7 @@ class TestResource(BaseResource):
 
     name = 'resource'
     jobs_path = '$.no.real.job'
+    _masked_fields = ['password']
 
     public_actions = BASE_PUBLIC_ACTIONS + [
         'upper',

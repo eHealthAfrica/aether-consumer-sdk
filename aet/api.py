@@ -291,7 +291,7 @@ class APIServer(object):
 
     def handle_crud(self, request: Request, operation: str, _type: str, tenant: str):
         self.app.logger.debug(f'tenant: {tenant} request: {request}')
-        _id = request.args.get('id', None)
+        _id = request.values.get('id', None)
         response: Union[str, List, Dict, bool]  # anything compatible with jsonify
         if operation == 'CREATE':
             if self.consumer.validate(request.get_json(), _type, tenant):
@@ -312,6 +312,10 @@ class APIServer(object):
                 response = json.loads(
                     json.dumps(self.task.get(_id, _type, tenant))
                 )
+                try:
+                    response = self.consumer.dispatch(tenant, _type, 'mask_config', response)
+                except ConsumerHttpException as che:
+                    return che.as_response()
             except ValueError:
                 response = {'error': f'{_type} object with id : {_id} not found'}
         if operation == 'LIST':

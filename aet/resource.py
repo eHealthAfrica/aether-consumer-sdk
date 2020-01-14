@@ -29,6 +29,7 @@ import threading
 from typing import Any, Callable, Dict, List, Union
 
 from aether.python.redis.task import Task, TaskEvent
+from aether.python.utils import replace_nested
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 from werkzeug.local import LocalProxy
@@ -47,7 +48,12 @@ BASE_PUBLIC_ACTIONS = [
     'VALIDATE',
     'validate_pretty',
     'describe',
-    'get_schema'
+    'get_schema',
+    'mask_config'
+]
+
+HIDDEN_METHODS = [
+    'mask_config'
 ]
 
 
@@ -80,7 +86,8 @@ class AbstractResource(metaclass=ABCMeta):
         return {
             'describe': cls._describe,
             'get_schema': cls._get_schema,
-            'validate_pretty': cls._validate_pretty
+            'validate_pretty': cls._validate_pretty,
+            'mask_config': cls._mask_config
         }
 
     @classproperty
@@ -129,6 +136,8 @@ class AbstractResource(metaclass=ABCMeta):
         '''
         description = cls._describe_static()
         for action in cls.public_actions:
+            if action in HIDDEN_METHODS:
+                continue
             try:
                 method = getattr(cls, action)
                 item = {'method': action}
@@ -143,11 +152,25 @@ class AbstractResource(metaclass=ABCMeta):
     def _describe_static(cls):
         description = []
         for name, method in cls.static_actions.items():
+            if name in HIDDEN_METHODS:
+                continue
             item = {'method': name}
             item['signature'] = str(signature(method))
             item['doc'] = getdoc(method)
             description.append(item)
         return description
+
+    @classmethod
+    def _mask_config(cls, config, *args, **kwargs):
+        if not hasattr(cls, '_masked_fields') or not cls._masked_fields:
+            return config
+        for path in cls._masked_fields:
+            parts = path.lstrip('$.').split('.')
+            try:
+                replace_nested(config, parts, '*****')
+            except KeyError:
+                pass
+        return config
 
 
 class ResourceReference(object):
@@ -207,6 +230,7 @@ class BaseResource(AbstractResource):
 
     id: str
     definition: ResourceDefinition  # implementation of the def described in the schema
+    _masked_fields: List[str] = []  # jsonpaths to be masked when showing definition
     # requires no instance to execute
     validator: Any = None
     lock: threading.Lock
