@@ -83,6 +83,7 @@ class BaseJob(AbstractResource):
         'resume',
         'get_status'
     ]
+    _masked_fields: List[str] = []  # jsonpaths to be masked when showing definition
 
     @property
     @abstractmethod  # required

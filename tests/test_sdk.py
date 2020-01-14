@@ -19,6 +19,7 @@
 # under the License.
 
 from copy import copy
+import types
 
 import requests
 
@@ -387,6 +388,17 @@ def test_resource__basic_describe_public():
     assert(len(TestResource._describe()) == 5)
 
 
+@pytest.mark.unit
+def test_resource__mask_config():
+    config = {
+        'id': 'an_id',
+        'password': 'something'
+    }
+    res = TestResource._mask_config(config)
+    assert(res['password'] != 'something')
+    assert(res['id'] == 'an_id')
+
+
 ######
 #
 #  Jsonpath Tests
@@ -535,6 +547,7 @@ def test_api__allowed_types(mocked_api):
                         ('resource/update', False, {'a': 'b'}, True),
                         ('resource/add', True, {'id': 'someid', 'username': 'user', 'password': 'pw1'}, False),
                         ('resource/update', True, {'id': 'someid', 'username': 'user', 'password': 'pw2'}, False),
+                        ('resource/get?id=someid', lambda x: x['password'] == '*****', {}, False),
                         ('resource/status', None, {'id': 'someid'}, True),  # these are now allowed
                         ('resource/pause', None, {'id': 'someid'}, True),
                         ('resource/resume', None, {'id': 'someid'}, True),
@@ -556,7 +569,10 @@ def test_api_post_calls(call, result, json_body, raises_error, mocked_api):
     except json.decoder.JSONDecodeError:
         val = res.text
     finally:
-        assert(val == result), f'{call} | {result} | {body}'
+        if not isinstance(result, types.FunctionType):
+            assert(val == result), f'{call} | {result} | {json_body}'
+        else:
+            assert(result(val)), val
 
 
 ######
