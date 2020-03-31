@@ -18,7 +18,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import birdisle.redis
 from copy import deepcopy
 import io
 import json
@@ -30,6 +29,8 @@ from unittest import mock
 from uuid import uuid4
 
 from aether.python.redis.task import Task, TaskHelper
+from redis import Redis
+import fakeredis
 
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
@@ -321,12 +322,12 @@ class MockCallable(object):
         self.value = msg
 
 
+def get_redis():
+    return Redis(host='redis-test')
+
+
 def get_fakeredis():
-    birdisle.redis.LocalSocketConnection.health_check_interval = 0
-    redis_instance = birdisle.redis.StrictRedis()
-    # set keyspace notifications as we do in live
-    redis_instance.config_set('notify-keyspace-events', 'KEA')
-    return redis_instance
+    return fakeredis.FakeStrictRedis()
 
 
 class MockConsumer(BaseConsumer):
@@ -336,7 +337,7 @@ class MockConsumer(BaseConsumer):
             CON_CONF,
             KAFKA_CONF,
             self.job_class,
-            redis_instance=get_fakeredis()
+            redis_instance=get_redis()
         )
 
 

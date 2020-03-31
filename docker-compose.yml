@@ -34,6 +34,10 @@ services:
     extra_hosts:
       - moby:127.0.0.1
 
+  redis-test:
+    image: redis:alpine
+
+
   # ---------------------------------
   # Aether Consumer SDK
   # ---------------------------------

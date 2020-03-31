@@ -51,7 +51,7 @@ setup(
         'webtest',
     ],
     tests_require=[
-        'birdisle',
+        'fakeredis',
         'flake8',
         'pytest',
         'pytest-cov',

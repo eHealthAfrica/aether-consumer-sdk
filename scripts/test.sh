@@ -48,6 +48,8 @@ then
     docker-compose up -d  zookeeper-test kafka-test
 fi
 
+docker-compose up -d redis-test
+
 echo "_________________________________________________ Starting Python Tests in mode $MODE"
 
 echo "_________________________________________________ Building container"
