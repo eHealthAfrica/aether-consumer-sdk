@@ -700,6 +700,28 @@ def test_itest_remove_job(IJobManager):
 
 
 @pytest.mark.unit
+def test_itest_handle_exception_and_resume_job(IJobManager):
+    _id = i_job.get('id')
+    IJobManager.task.add(i_job, 'job', tenant)
+    sleep(1)
+    keys = list(IJobManager.jobs.keys())
+    assert(any([_id in key for key in keys]))
+    job_id = f'{tenant}:{_id}'
+    job = IJobManager.jobs[job_id]
+    job._cause_exception()
+    sleep(3)
+    assert(job.get_status() == str(JobStatus.DEAD))
+    job._revert_exception()
+    job.resume()
+    sleep(3)
+    assert(job.get_status() == str(JobStatus.NORMAL))
+    IJobManager.task.remove(_id, 'job', tenant)
+    sleep(1)
+    keys = list(IJobManager.jobs.keys())
+    assert(not any([_id in key for key in keys]))
+
+
+@pytest.mark.unit
 def test_itest_add_ten_jobs(IJobManager):
     assert(IJobManager.task is not None)
     names = []
@@ -714,8 +736,12 @@ def test_itest_add_ten_jobs(IJobManager):
     LOG.debug(_ids)
     for name in names:
         assert(name in _ids)
+    last_log = None
     for job in IJobManager.jobs.values():
         assert(job.status is JobStatus.NORMAL)
+        logs = job.get_logs()
+        assert(logs != last_log)
+        last_log = logs
 
 
 @pytest.mark.unit

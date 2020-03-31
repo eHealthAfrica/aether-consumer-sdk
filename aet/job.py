@@ -23,6 +23,7 @@ from copy import deepcopy
 import enum
 from time import sleep
 from threading import Thread
+import traceback
 from typing import Any, Callable, Dict, List, Union
 
 from aether.python.redis.task import Task, TaskEvent, TaskHelper
@@ -30,7 +31,7 @@ from aether.python.redis.task import Task, TaskEvent, TaskHelper
 from .exceptions import ConsumerHttpException
 from .helpers import classproperty, require_property
 from .jsonpath import CachedParser
-from .logger import get_logger
+from .logger import get_logger, callback_logger
 from .resource import BaseResource, InstanceManager, ResourceReference, AbstractResource
 
 LOG = get_logger('Job')
@@ -81,7 +82,8 @@ class BaseJob(AbstractResource):
         # These are only valid for jobs
         'pause',
         'resume',
-        'get_status'
+        'get_status',
+        'get_logs'
     ]
     _masked_fields: List[str] = []  # jsonpaths to be masked when showing definition
 
@@ -99,10 +101,12 @@ class BaseJob(AbstractResource):
         self._id = _id
         self.tenant = tenant
         self.resources = resources
+        self.log_stack = []
+        self.log = callback_logger(f'j-{self.tenant}-{self._id}', self.log_stack, 100)
         self._setup()
         self._start()
 
-    # PUBLIC METHODS for job Management
+    # PUBLIC METHODS for job Management & Monitoring
 
     def pause(self, *args, **kwargs):
         '''
@@ -116,16 +120,32 @@ class BaseJob(AbstractResource):
         '''
             Resume the job after pausing it.
         '''
-        self.status = JobStatus.NORMAL
-        return True
+        if self.status is not JobStatus.DEAD:
+            self.status = JobStatus.NORMAL
+            return True
+        else:
+            self.log.info(f'Restarting dead job {self._id}')
+            self._start()
+            return True
 
     def get_status(self, *args, **kwargs) -> Union[Dict[str, Any], str]:
         # externally available information about this job.
         # At a minimum should return the running status
         return str(self.status)
 
+    def get_logs(self, *arg, **kwargs):
+        '''
+        A list of the last 100 log entries from this job in format
+        [
+            (timestamp, log_level, message),
+            (timestamp, log_level, message),
+            ...
+        ]
+        '''
+        return self.log_stack[:]
+
     def set_config(self, config: dict) -> None:
-        LOG.debug(f'Job {self._id} got new config {config}')
+        self.log.debug(f'Job {self._id} got new config {config}')
         self.config = config
         if self.status is JobStatus.STOPPED:
             self._start()
@@ -140,7 +160,7 @@ class BaseJob(AbstractResource):
             while self.status is not JobStatus.STOPPED:
                 c += 1
                 if c % self.report_interval == 0:
-                    LOG.debug(f'thread {self._id} running : {self.status}')
+                    self.log.debug(f'thread {self._id} running : {self.status}')
                 if self.status is JobStatus.PAUSED:
                     self.safe_sleep(self.sleep_delay)  # wait for the status to change
                     continue
@@ -148,7 +168,7 @@ class BaseJob(AbstractResource):
                     # Take the new configuration into account if anything needs to happen
                     # before the work part of the cycles. New DB connection etc.
                     self._handle_new_settings()
-                    LOG.debug(f'Job {self._id} is using a new configuration. {self.config}')
+                    self.log.debug(f'Job {self._id} is using a new configuration. {self.config}')
                     # Ok, all done and back to normal.
                     self.status = JobStatus.NORMAL
                     continue
@@ -160,16 +180,17 @@ class BaseJob(AbstractResource):
                     self.safe_sleep(self.sleep_delay)  # wait for the status to change
                     continue
                 try:
-                    LOG.debug(f'{self._id} -> {self.status}')
+                    self.log.debug(f'{self._id} -> {self.status}')
                     messages = self._get_messages(config)
                     if messages:
                         self._handle_messages(config, messages)
                 except RuntimeError as rer:
-                    LOG.error(f'{self._id} : {rer}')
-                    self.safe_sleep(10)
-            LOG.debug(f'Job {self._id} stopped normally.')
+                    self.log.critical(f'RuntimeError: {self._id} | {rer}')
+                    self.safe_sleep(self.sleep_delay)
+            self.log.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
-            LOG.critical(f'job {self._id} failed with critical error {fatal}')
+            self.log.critical(f'job {self._id} failed with critical error {type(fatal)}: {fatal}')
+            self.log.error(''.join(traceback.format_tb(fatal.__traceback__)))
             self.status = JobStatus.DEAD
             return  # we still want to be able to read the logs so don't re-raise
 
@@ -186,12 +207,22 @@ class BaseJob(AbstractResource):
         # probably needs custom implementation for each consumer
         # Do something based on the messages
         sleep(self.sleep_delay)
+        LOG.debug('Handling Messages')
         self.value += 1
 
-    def _cause_exception(self) -> None:
+    def _cause_exception(self, exception: Exception = ValueError) -> None:
         # intentionally cause the thread to crash for testing purposes
         # should yield status.DEAD and throw a critical message for TypeError
-        self.value = None  # type: ignore
+        def _raise(self, *args, **kwargs):
+            raise exception('TestException')
+        self.log.debug(f'{self._id} throwing exception on next _handle_messages: {type(exception)}')
+        self._handle_messages = _raise
+
+    def _revert_exception(self):
+        def _normal(self, *args, **kwargs):
+            pass
+        self.log.debug(f'{self._id} removing poison method')
+        self._handle_messages = _normal
 
     def _setup(self):
         # runs before thread and allows for setup, we can also fault here if not
@@ -199,7 +230,7 @@ class BaseJob(AbstractResource):
         pass
 
     def _start(self):
-        LOG.debug(f'Job {self._id} starting')
+        self.log.debug(f'Job {self._id} starting')
         self.status = JobStatus.NORMAL
         self._thread = Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -214,7 +245,7 @@ class BaseJob(AbstractResource):
         if not matches:
             return []
         resource_ids = [m.value for m in matches][0]
-        LOG.debug(f'{self._id}: found {_type} ids:  {resource_ids}')
+        self.log.debug(f'{self._id}: found {_type} ids:  {resource_ids}')
         resources = []
         if isinstance(resource_ids, str):
             resource_ids = [resource_ids]
@@ -223,7 +254,7 @@ class BaseJob(AbstractResource):
             if res:
                 resources.append(res)
             else:
-                LOG.critical(f'in {self._id} resource {_id} not available')
+                self.log.critical(f'in {self._id} resource {_id} not available')
         return resources
 
     def get_resource(self, _type, _id) -> BaseResource:
@@ -240,7 +271,7 @@ class BaseJob(AbstractResource):
 
     def stop(self, *args, **kwargs):
         # return thread to be observed
-        LOG.info(f'Job {self._id} caught stop signal.')
+        self.log.info(f'Job {self._id} caught stop signal.')
         self.status = JobStatus.STOPPED
         return self._thread
 
