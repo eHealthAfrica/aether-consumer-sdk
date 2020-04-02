@@ -385,7 +385,17 @@ def test_resource__basic_describe_static():
 
 @pytest.mark.unit
 def test_resource__basic_describe_public():
-    assert(len(TestResource._describe()) == 5)
+    _desc = TestResource._describe()
+    assert(len(_desc) == 10)
+    expected = ['get', 'add', 'delete']
+    for i in _desc:
+        assert(type(i) is MethodDesc)
+        try:
+            expected.remove(i.method)
+        except ValueError:
+            pass
+    json.dumps(_desc)
+    assert(len(expected) == 0)
 
 
 @pytest.mark.unit
@@ -456,6 +466,7 @@ def test_cached_parser__bad_path():
 
 @pytest.mark.unit
 @pytest.mark.parametrize("call,result,raises_error", [
+                        ('job/describe', -1, False),
                         ('job/delete?id=fake', False, False),
                         ('job/delete', None, True),
                         ('job/get?id=fake', {'error': 'job object with id : fake not found'}, False),

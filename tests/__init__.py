@@ -46,7 +46,12 @@ from aet.job import BaseJob, JobManager, JobStatus
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
 from aet.logger import get_logger
-from aet.resource import BaseResource, lock, BASE_PUBLIC_ACTIONS
+from aet.resource import (  # noqa
+    BaseResource,
+    BASE_PUBLIC_ACTIONS,
+    lock,
+    MethodDesc
+)
 
 
 from .assets.schemas import test_schemas
