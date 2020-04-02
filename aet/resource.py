@@ -21,6 +21,7 @@
 
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
+from dataclasses import asdict, dataclass
 from inspect import signature, getdoc
 import json
 import queue
@@ -40,17 +41,81 @@ from .helpers import classproperty, require_property
 
 LOG = get_logger('Resource')
 
-BASE_PUBLIC_ACTIONS = [
-    'READ',
-    'CREATE',
-    'DELETE',
-    'LIST',
-    'VALIDATE',
+
+# work around to make MethodDesc json serializable
+
+def _default(self, obj):
+    return getattr(obj.__class__, "to_json", _default.default)(obj)
+
+
+_default.default = json.JSONEncoder.default  # Save unmodified default.
+json.JSONEncoder.default = _default  # Replace it.
+
+
+@dataclass
+class MethodDesc:
+    method: str
+    signature: str
+    doc: str
+
+    def to_json(self):
+        return asdict(self)
+
+
+BASE_REDIS_METHODS = {
+    'READ': MethodDesc(
+        method='get',
+        signature='id:str',
+        doc='''
+        GET / POST
+        Retrieve an instance of this type.
+        Requires argument {id}
+        '''
+    ),
+    'CREATE': MethodDesc(
+        method='add',
+        signature='json_body: ResourceDefinition',
+        doc='''
+        POST (json)
+        Create a new instance of this type.
+        Requires the Resource Definition for the new instance as json body
+        '''
+    ),
+    'DELETE': MethodDesc(
+        method='delete',
+        signature='id:str',
+        doc='''
+        GET / POST
+        Delete and instance of this type
+        Requires argument {id}
+        '''
+    ),
+    'LIST': MethodDesc(
+        method='list',
+        signature='()',
+        doc='''
+        GET
+        List existing instance of this type
+        '''
+    ),
+    'VALIDATE': MethodDesc(
+        method='validate',
+        signature='json_body: ResourceDefinition',
+        doc='''
+        POST
+        Validate a ResourceDefinition against the type schema
+        Requires the Resource Definition for the new instance as json body
+        '''
+    )
+}
+
+BASE_PUBLIC_ACTIONS = list(BASE_REDIS_METHODS.keys()) + [
     'validate_pretty',
     'describe',
     'get_schema',
     'mask_config'
 ]
+
 
 HIDDEN_METHODS = [
     'mask_config'
@@ -130,20 +195,24 @@ class AbstractResource(metaclass=ABCMeta):
         return cls.schema
 
     @classmethod
-    def _describe(cls, *args, **kwargs):
+    def _describe(cls, *args, **kwargs) -> List[MethodDesc]:
         '''
         Described the available methods exposed by this resource type
         '''
-        description = cls._describe_static()
+        description: List[MethodDesc] = cls._describe_static()
         for action in cls.public_actions:
             if action in HIDDEN_METHODS:
                 continue
+            elif action in BASE_REDIS_METHODS.keys():
+                description.append(BASE_REDIS_METHODS.get(action))
+                continue
             try:
                 method = getattr(cls, action)
-                item = {'method': action}
-                item['signature'] = str(signature(method))
-                item['doc'] = getdoc(method)
-                description.append(item)
+                description.append(MethodDesc(
+                    method=action,
+                    signature=str(signature(method)),
+                    doc=getdoc(method)
+                ))
             except AttributeError:
                 pass
         return description
@@ -154,10 +223,11 @@ class AbstractResource(metaclass=ABCMeta):
         for name, method in cls.static_actions.items():
             if name in HIDDEN_METHODS:
                 continue
-            item = {'method': name}
-            item['signature'] = str(signature(method))
-            item['doc'] = getdoc(method)
-            description.append(item)
+            description.append(MethodDesc(
+                method=name,
+                signature=str(signature(method)),
+                doc=getdoc(method)
+            ))
         return description
 
     @classmethod
