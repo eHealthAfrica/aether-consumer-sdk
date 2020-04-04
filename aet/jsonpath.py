@@ -20,7 +20,7 @@
 
 from typing import ClassVar
 
-from jsonpath_ng.ext import parse as jsonpath_ng_ext_parse
+from eha_jsonpath import parse as eha_parse
 from .logger import get_logger
 
 LOG = get_logger('Json')
@@ -38,11 +38,9 @@ class CachedParser(object):
         # we never need to call parse directly; use find()
         if path not in CachedParser.cache.keys():
             try:
-                CachedParser.cache[path] = jsonpath_ng_ext_parse(path)
+                CachedParser.cache[path] = eha_parse(path)
             except Exception as err:  # jsonpath-ng raises the base exception type
-                new_err = 'exception parsing path {path} : {error} '.format(
-                    path=path, error=err
-                )
+                new_err = f'exception parsing path {path} : {err} '
                 LOG.error(new_err)
                 raise err
 
