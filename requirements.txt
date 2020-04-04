@@ -6,8 +6,8 @@
 
 aether.python>=1.0.17
 confluent_kafka
+eha_jsonpath
 flask
-jsonpath_ng
 jsonschema
 kafka-python
 requests
