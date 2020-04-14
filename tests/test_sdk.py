@@ -374,7 +374,7 @@ def test_resource__basic_validate_fail_verbose():
 @pytest.mark.unit
 def test_resource__basic_method():
     tenant = 'test-1'
-    res = TestResource(tenant, TestResourceDef1)
+    res = TestResource(tenant, TestResourceDef1, None)
     assert(res.upper('username') == 'USER')
 
 
