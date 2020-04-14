@@ -300,6 +300,7 @@ class BaseResource(AbstractResource):
 
     id: str
     definition: ResourceDefinition  # implementation of the def described in the schema
+    context: 'InstanceManager'  # reference to parent InstanceManager
     _masked_fields: List[str] = []  # jsonpaths to be masked when showing definition
     # requires no instance to execute
     validator: Any = None
@@ -320,7 +321,7 @@ class BaseResource(AbstractResource):
         _jobs_path = require_property(cls.jobs_path)
         return ResourceReference(_name, _jobs_path, cls)
 
-    def __init__(self, tenant, definition):
+    def __init__(self, tenant, definition, context):
         # should be validated before initialization
         self._stopped = False
         self.lock = threading.Lock()
@@ -328,6 +329,7 @@ class BaseResource(AbstractResource):
         self.id = definition['id']
         self.definition = ResourceDefinition(definition)
         self.tenant = tenant
+        self.context = context
         self._on_init()
 
     def _on_init(self):
@@ -431,7 +433,7 @@ class InstanceManager(object):
     def update(self, _id, _type, tenant, body):
         key = self.format(_id, _type, tenant)
         _classes = {_cls.name: _cls for _cls in self.rules}
-        _cls = _classes.get(_type)
+        _cls: BaseResource = _classes.get(_type)
         if not _cls:
             LOG.error([_type, _classes])
             raise RuntimeError('Expected to find definition for {_type}')
@@ -445,7 +447,7 @@ class InstanceManager(object):
             thread.start()
             LOG.debug(f'Updating instance of {key}')
         else:
-            self.instances[key] = _cls(tenant, body)
+            self.instances[key] = _cls(tenant, body, self)
             LOG.debug(f'Created new instance of {key}, now: {list(self.instances.keys())}')
 
     def dispatch(self, tenant=None, _type=None, operation=None, _id=None, request=None):
