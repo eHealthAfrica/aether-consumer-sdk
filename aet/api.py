@@ -304,7 +304,8 @@ class APIServer(object):
             try:
                 response = self.task.remove(_id, _type, tenant)
             except ValueError:
-                response = {'error': f'{_type} object with id : {_id} not found'}
+                return ConsumerHttpException(
+                    f'{_type} object with id : {_id} not found', 404).as_response()
         if operation == 'READ':
             if not _id:
                 return Response('Argument "id" is required', 400)
@@ -317,7 +318,8 @@ class APIServer(object):
                 except ConsumerHttpException as che:
                     return che.as_response()
             except ValueError:
-                response = {'error': f'{_type} object with id : {_id} not found'}
+                return ConsumerHttpException(
+                    f'{_type} object with id : {_id} not found', 404).as_response()
         if operation == 'LIST':
             response = list(self.task.list(_type, tenant))
         with self.app.app_context():
