@@ -436,7 +436,7 @@ class InstanceManager(object):
         _cls: BaseResource = _classes.get(_type)
         if not _cls:
             LOG.error([_type, _classes])
-            raise RuntimeError('Expected to find definition for {_type}')
+            raise RuntimeError(f'Expected to find definition for {_type}')
         if key in self.instances:
             # this is blocking on lock so thread it
             thread = threading.Thread(
