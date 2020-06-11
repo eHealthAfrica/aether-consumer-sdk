@@ -84,8 +84,9 @@ def get_broker_info(kclient, scope='all'):
                     errstr = ""
 
                 t_str.append(
-                    "partition {} leader: {}, replicas: {}, isrs: {}, err: {errstr}".format(
-                        p.id, p.leader, p.replicas, p.isrs, errstr))
+                    f"partition {p.id} leader: {p.leader}, "
+                    f"replicas: {p.replicas}, isrs: {p.isrs}, err: {errstr}"
+                )
             res['topics'].append(t_str)
         if scope in res.keys():
             return res[scope]
