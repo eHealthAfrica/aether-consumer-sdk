@@ -143,8 +143,9 @@ def kafka_callback(err=None, msg=None, _=None, **kwargs):
                 LOG.error(f'NO-SAVE: {_id} in | err {err.name()}')
 
 
-def produce(docs, schema, topic_name, producer):
-
+def produce(docs, schema, topic_name, producer, callback=None):
+    if not callback:
+        callback = kafka_callback
     with io.BytesIO() as bytes_writer:
         writer = DataFileWriter(
             bytes_writer, DatumWriter(), schema, codec='deflate')
@@ -159,7 +160,6 @@ def produce(docs, schema, topic_name, producer):
                 # Message doesn't have the proper format for the current schema.
                 LOG.debug(
                     f"SCHEMA_MISMATCH:NOT SAVED! TOPIC:{topic_name}, ID:{_id}")
-
         writer.flush()
         raw_bytes = bytes_writer.getvalue()
 
@@ -167,7 +167,7 @@ def produce(docs, schema, topic_name, producer):
     producer.produce(
         topic_name,
         raw_bytes,
-        callback=kafka_callback,
+        callback=callback,
         headers={
             'avro_size': str(len(_ids)),
             'contains_id': json.dumps(_ids)
