@@ -615,6 +615,7 @@ def mocked_consumer():
     consumer.stop()
     sleep(.5)
 
+
 # API Assets
 @pytest.mark.unit
 @pytest.fixture(scope="module")
