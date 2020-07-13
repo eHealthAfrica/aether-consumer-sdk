@@ -4,7 +4,7 @@
 #                                                                              #
 ################################################################################
 
-aether.python>=1.0.17
+aether.python>=1.1.0
 confluent_kafka
 eha_jsonpath
 flask
