@@ -20,6 +20,7 @@
 
 from abc import abstractmethod
 from copy import deepcopy
+from datetime import datetime
 import enum
 from time import sleep
 from threading import Thread
@@ -97,10 +98,11 @@ class BaseJob(AbstractResource):
         name = require_property(cls.name)
         return JobReference(name)
 
-    def __init__(self, _id: str, tenant: str, resources: InstanceManager):
+    def __init__(self, _id: str, tenant: str, resources: InstanceManager, context: 'JobManager'):
         self._id = _id
         self.tenant = tenant
         self.resources = resources
+        self.context = context
         self.log_stack = []
         self.log = callback_logger(f'j-{self.tenant}-{self._id}', self.log_stack, 100)
         self._setup()
@@ -158,6 +160,7 @@ class BaseJob(AbstractResource):
         try:
             c = 0
             while self.status is not JobStatus.STOPPED:
+                self.context.check_in(self._id, datetime.now())
                 c += 1
                 if c % self.report_interval == 0:
                     self.log.debug(f'thread {self._id} running : {self.status}')
@@ -187,10 +190,13 @@ class BaseJob(AbstractResource):
                 except RuntimeError as rer:
                     self.log.critical(f'RuntimeError: {self._id} | {rer}')
                     self.safe_sleep(self.sleep_delay)
+
+            self.context.set_inactive(self._id)
             self.log.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
             self.log.critical(f'job {self._id} failed with critical error {type(fatal)}: {fatal}')
             self.log.error(''.join(traceback.format_tb(fatal.__traceback__)))
+            self.context.set_inactive(self._id)
             self.status = JobStatus.DEAD
             return  # we still want to be able to read the logs so don't re-raise
 
@@ -272,6 +278,7 @@ class BaseJob(AbstractResource):
     def stop(self, *args, **kwargs):
         # return thread to be observed
         self.log.info(f'Job {self._id} caught stop signal.')
+        self.context.set_inactive(self._id)
         self.status = JobStatus.STOPPED
         return self._thread
 
@@ -294,6 +301,7 @@ class JobManager(object):
 
     def __init__(self, task_master: TaskHelper, job_class: Callable = BaseJob):
         self.jobs = {}
+        self.check_ins = {}
         self.task = task_master
         self.job_class = job_class  # type: ignore
         self.resources = InstanceManager(self.job_class._resources)
@@ -309,6 +317,21 @@ class JobManager(object):
         [t.join() for t in threads]
         LOG.info('Stopping Resources...')
         [t.join() for t in self.resources.stop()]
+
+    def set_inactive(self, _id):
+        if _id in self.check_ins:
+            del self.check_ins[_id]
+
+    def check_in(self, _id, ts: datetime):
+        self.check_ins[_id] = ts
+
+    def status(self):
+        _now = datetime.now()
+        # if a job is inactive (stopped / paused intentionally or died naturally)
+        # then it's remove from the check and given a value of _now
+        idle_times = {_id: int((_now - self.check_ins.get(_id, _now)).total_seconds())
+                      for _id in self.jobs.keys()}
+        return idle_times
 
     # Job Initialization
 
@@ -347,7 +370,7 @@ class JobManager(object):
             self.jobs[_id].set_config(job)
         else:
             LOG.debug(f'Creating new job {_id}')
-            self.jobs[_id] = self.job_class(_id, tenant, self.resources)
+            self.jobs[_id] = self.job_class(_id, tenant, self.resources, self)
             self.jobs[_id].set_config(job)
 
     def list_jobs(self, tenant: str):

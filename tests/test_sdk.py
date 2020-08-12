@@ -243,8 +243,10 @@ def test_publishing_enum_pass(default_consumer_args,
            topic_size), "Should have generated the right number of messages"
     # set configs
     consumer_kwargs = default_consumer_args
+    consumer_kwargs["aether_emit_flag_required"] = True
     consumer_kwargs["aether_emit_flag_values"] = publish_on
     # get messages for this emit level
+    LOG.debug(json.dumps(consumer_kwargs, indent=2))
     iter_consumer = KafkaConsumer(**consumer_kwargs)
     iter_consumer.subscribe([topic])
     iter_consumer.seek_to_beginning()
@@ -584,6 +586,33 @@ def test_api_post_calls(call, result, json_body, raises_error, mocked_api):
             assert(val == result), f'{call} | {result} | {json_body}'
         else:
             assert(result(val)), val
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("call,method,json_body,raises_error", [
+                        ('job/add', 'POST', {
+                            "id": "old_timer", "resources": [], "poll_interval": 1}, False),
+                        ('health', 'GET', None, True),
+
+])
+def test_api_stuck_job(call, method, json_body, raises_error, mocked_stuck_api):
+    user = settings.CONSUMER_CONFIG.get('ADMIN_USER')
+    pw = settings.CONSUMER_CONFIG.get('ADMIN_PW')
+    auth = requests.auth.HTTPBasicAuth(user, pw)
+    port = 7099
+    url = f'http://localhost:{port}/{call}'
+    req = requests.Request(method, url, json=json_body, auth=auth)
+    with requests.Session() as s:
+        res = s.send(req.prepare())
+        try:
+            LOG.debug(res.text)
+            res.raise_for_status()
+            if raises_error:
+                assert(False), res
+            sleep(2)
+        except Exception:
+            if not raises_error:
+                assert(False), res
 
 
 ######

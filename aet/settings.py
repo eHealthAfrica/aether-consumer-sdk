@@ -25,6 +25,9 @@ import os
 class Settings(dict):
     # A container for our settings
     def __init__(self, file_path=None, alias=None, exclude=None):
+        # takes precident over env and initial values. Case sensitive
+        # useful for tests
+        self.overrides = {}
         if not exclude:
             self.exclude = []
         else:
@@ -39,13 +42,20 @@ class Settings(dict):
         except KeyError:
             return default
 
+    def override(self, key, value):
+        self.overrides[key] = value
+
     def __getattr__(self, name):
         try:
+            if name in self.overrides:
+                return self.overrides[name]
             super().__getattr__(name)
         except AttributeError:
             return self.get(name)
 
     def __getitem__(self, key):
+        if key in self.overrides:
+            return self.overrides[key]
         if self.alias and key in self.alias:
             key = self.alias.get(key)
         result = os.environ.get(key.upper())

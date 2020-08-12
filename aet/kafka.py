@@ -104,7 +104,9 @@ class KafkaConsumer(confluent_kafka.Consumer):
             pass_conditions=self.config.get("aether_emit_flag_values"))
 
     def _get_topic_filter_config(self, topic) -> FilterConfig:
-        return self._topic_filter_configs.get(topic, None)
+        if topic not in self._topic_filter_configs:
+            self.set_topic_filter_config(topic, self._default_filter_config())
+        return self._topic_filter_configs.get(topic)
 
     def get_approval_filter(self, config: FilterConfig):
         # If {aether_emit_flag_required} is True, each message is checked for a passing value.
@@ -144,6 +146,8 @@ class KafkaConsumer(confluent_kafka.Consumer):
             emit_level=self.config.get("aether_masking_schema_emit_level"))
 
     def _get_topic_mask_config(self, topic):
+        if topic not in self._topic_mask_configs:
+            self.set_topic_mask_config(topic, self._default_mask_config())
         return self._topic_mask_configs.get(topic, None)
 
     def get_mask_from_schema(self, schema, config: MaskConfig):
@@ -272,8 +276,8 @@ class KafkaConsumer(confluent_kafka.Consumer):
         # we get a mess of unicode that can't be json parsed so we need ast
         raw_schema = ast.literal_eval(str(reader.meta))
         schema = json.loads(raw_schema.get("avro.schema"))
-        filter_config = self._get_topic_filter_config(topic) or self._default_filter_config()
-        mask_config = self._get_topic_mask_config(topic) or self._default_mask_config()
+        filter_config = self._get_topic_filter_config(topic)
+        mask_config = self._get_topic_mask_config(topic)
 
         if schema != last_schema.get(topic):
             last_schema[topic] = schema
