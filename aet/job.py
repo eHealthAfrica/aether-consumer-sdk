@@ -20,6 +20,7 @@
 
 from abc import abstractmethod
 from copy import deepcopy
+from datetime import datetime
 import enum
 from time import sleep
 from threading import Thread
@@ -97,10 +98,11 @@ class BaseJob(AbstractResource):
         name = require_property(cls.name)
         return JobReference(name)
 
-    def __init__(self, _id: str, tenant: str, resources: InstanceManager):
+    def __init__(self, _id: str, tenant: str, resources: InstanceManager, context: 'JobManager'):
         self._id = _id
         self.tenant = tenant
         self.resources = resources
+        self.context = context
         self.log_stack = []
         self.log = callback_logger(f'j-{self.tenant}-{self._id}', self.log_stack, 100)
         self._setup()
@@ -158,6 +160,7 @@ class BaseJob(AbstractResource):
         try:
             c = 0
             while self.status is not JobStatus.STOPPED:
+                self.context.check_in(self._id, datetime.now())
                 c += 1
                 if c % self.report_interval == 0:
                     self.log.debug(f'thread {self._id} running : {self.status}')
@@ -294,6 +297,7 @@ class JobManager(object):
 
     def __init__(self, task_master: TaskHelper, job_class: Callable = BaseJob):
         self.jobs = {}
+        self.check_ins = {}
         self.task = task_master
         self.job_class = job_class  # type: ignore
         self.resources = InstanceManager(self.job_class._resources)
@@ -309,6 +313,15 @@ class JobManager(object):
         [t.join() for t in threads]
         LOG.info('Stopping Resources...')
         [t.join() for t in self.resources.stop()]
+
+    def check_in(self, _id, ts: datetime):
+        self.check_ins[_id] = ts
+
+    def status(self):
+        _now = datetime.now()
+        idle_times = {_id: int((_now - self.check_ins.get(_id, _now)).total_seconds())
+                      for _id in self.jobs.keys()}
+        return idle_times
 
     # Job Initialization
 
@@ -347,7 +360,7 @@ class JobManager(object):
             self.jobs[_id].set_config(job)
         else:
             LOG.debug(f'Creating new job {_id}')
-            self.jobs[_id] = self.job_class(_id, tenant, self.resources)
+            self.jobs[_id] = self.job_class(_id, tenant, self.resources, self)
             self.jobs[_id].set_config(job)
 
     def list_jobs(self, tenant: str):

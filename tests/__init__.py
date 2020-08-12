@@ -319,6 +319,12 @@ class IJob(BaseJob):
         return r.definition.get(prop)
 
 
+class StuckJob(IJob):
+    def _get_messages(self, config):
+        sleep(60)
+        return []
+
+
 class MockCallable(object):
     value: Optional[Task] = None
 
@@ -340,6 +346,23 @@ class MockConsumer(BaseConsumer):
         self.job_class = TestJob
         super(MockConsumer, self).__init__(
             CON_CONF,
+            KAFKA_CONF,
+            self.job_class,
+            redis_instance=get_redis()
+        )
+
+
+class MockStuckConsumer(BaseConsumer):
+    def __init__(self, CON_CONF, KAFKA_CONF):
+        _settings = CON_CONF.copy()
+        CON = settings.Settings(_settings)
+        CON.override('MAX_JOB_IDLE_SEC', 1)
+        CON.override('DUMP_STACK_ON_TIMEOUT', True)
+        CON.override('EXPOSE_PORT', 7099)
+        LOG.debug(CON.copy())
+        self.job_class = StuckJob
+        super(MockStuckConsumer, self).__init__(
+            CON,
             KAFKA_CONF,
             self.job_class,
             redis_instance=get_redis()
@@ -616,6 +639,17 @@ def mocked_consumer():
     sleep(.5)
 
 
+@pytest.mark.unit
+@pytest.fixture(scope="module")
+def mocked_stuck_consumer():
+    consumer = MockStuckConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
+    LOG.debug('Starting mocked_stuck_consumer')
+    yield consumer
+    LOG.debug('Fixture mocked_stuck_consumer complete, stopping.')
+    consumer.stop()
+    sleep(.5)
+
+
 # API Assets
 @pytest.mark.unit
 @pytest.fixture(scope="module")
@@ -624,5 +658,16 @@ def mocked_api(mocked_consumer) -> Iterable[APIServer]:
     # teardown
     LOG.debug('Fixture api complete, stopping.')
     mocked_consumer.stop()
+    # api.stop()
+    sleep(.5)
+
+
+@pytest.mark.unit
+@pytest.fixture(scope="module")
+def mocked_stuck_api(mocked_stuck_consumer) -> Iterable[APIServer]:
+    yield mocked_stuck_consumer.api
+    # teardown
+    LOG.debug('Fixture api complete, stopping.')
+    mocked_stuck_consumer.stop()
     # api.stop()
     sleep(.5)

@@ -18,8 +18,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import json
 from time import sleep
 from typing import Any, ClassVar, Dict
+import sys
+import threading
+import traceback
 
 from aether.python.redis.task import TaskHelper
 from flask import Response
@@ -89,6 +93,38 @@ class BaseConsumer(object):
                 LOG.error(f'Consumer could not stop service {service_name}')
         sleep(.25)
         LOG.info('Shutdown Complete')
+
+    def healthcheck(self, *args, **kwargs):
+        idle_times = self.job_manager.status()
+        max_idle = self.consumer_settings.get('MAX_JOB_IDLE_SEC', 600)
+        if not idle_times:
+            return {}
+        LOG.info(f'idle times (s) {idle_times}')
+        expired = {k: v for k, v in idle_times.items() if v > max_idle}
+        if expired:
+            LOG.error(f'Expired threads (s) {expired}')
+            if self.consumer_settings.get('DUMP_STACK_ON_EXPIRE', False):
+                LOG.critical('Healthcheck failed! Dumping stack.')
+                self.dump_stack()
+        return expired
+
+    def dump_stack(self):
+        _names = {th.ident: th.name for th in threading.enumerate()}
+        _threads = []
+        for _id, stack in sys._current_frames().items():
+            _info = {
+                'id': _id,
+                'name': _names.get(_id)}
+            frames = []
+            for filename, lineno, name, line in traceback.extract_stack(stack):
+                frames.append({
+                    'filename': filename,
+                    'line_no': lineno,
+                    'name': name,
+                    'line': line.strip() or None})
+            _info['frames'] = frames
+            _threads.append(_info)
+        LOG.error(json.dumps(_threads, indent=2))
 
     # Generic API Functions that aren't pure delegation to Redis
 
