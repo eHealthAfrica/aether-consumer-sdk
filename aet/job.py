@@ -190,10 +190,13 @@ class BaseJob(AbstractResource):
                 except RuntimeError as rer:
                     self.log.critical(f'RuntimeError: {self._id} | {rer}')
                     self.safe_sleep(self.sleep_delay)
+
+            self.context.set_inactive(self._id)
             self.log.debug(f'Job {self._id} stopped normally.')
         except Exception as fatal:
             self.log.critical(f'job {self._id} failed with critical error {type(fatal)}: {fatal}')
             self.log.error(''.join(traceback.format_tb(fatal.__traceback__)))
+            self.context.set_inactive(self._id)
             self.status = JobStatus.DEAD
             return  # we still want to be able to read the logs so don't re-raise
 
@@ -275,6 +278,7 @@ class BaseJob(AbstractResource):
     def stop(self, *args, **kwargs):
         # return thread to be observed
         self.log.info(f'Job {self._id} caught stop signal.')
+        self.context.set_inactive(self._id)
         self.status = JobStatus.STOPPED
         return self._thread
 
@@ -314,11 +318,17 @@ class JobManager(object):
         LOG.info('Stopping Resources...')
         [t.join() for t in self.resources.stop()]
 
+    def set_inactive(self, _id):
+        if _id in self.check_ins:
+            del self.check_ins[_id]
+
     def check_in(self, _id, ts: datetime):
         self.check_ins[_id] = ts
 
     def status(self):
         _now = datetime.now()
+        # if a job is inactive (stopped / paused intentionally or died naturally)
+        # then it's remove from the check and given a value of _now
         idle_times = {_id: int((_now - self.check_ins.get(_id, _now)).total_seconds())
                       for _id in self.jobs.keys()}
         return idle_times
