@@ -323,4 +323,4 @@ class KafkaConsumer(confluent_kafka.Consumer):
         partitions = self.assignment()
         for p in partitions:
             p.offset = confluent_kafka.OFFSET_BEGINNING
-            super(KafkaConsumer, self).assign(p)
+            super(KafkaConsumer, self).seek(p)
