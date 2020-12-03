@@ -56,6 +56,11 @@ case "$1" in
         $PYTEST -m unit
     ;;
 
+    test_ui )
+        echo 'Running UI Tests...'
+        flake8
+        $PYTEST -m ui
+    ;;
 
     test_integration )
         echo 'Running Integration Tests...'

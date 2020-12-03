@@ -39,6 +39,10 @@ elif [[ "${1:-}" == "unit" ]]; then
 elif [[ "${1:-}" == "lint" ]]; then
     MODE=test_lint
     SCAFFOLD=False
+
+elif [[ "${1:-}" == "ui" ]]; then
+    MODE=test_ui
+    SCAFFOLD=False
 fi
 
 kill_all

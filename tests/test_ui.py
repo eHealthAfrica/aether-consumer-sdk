@@ -1,4 +1,6 @@
-# Copyright (C) 2018 by eHealth Africa : http://www.eHealthAfrica.org
+#!/usr/bin/env python
+
+# Copyright (C) 2020 by eHealth Africa : http://www.eHealthAfrica.org
 #
 # See the NOTICE file distributed with this work for additional information
 # regarding copyright ownership.
@@ -16,38 +18,28 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[bdist_wheel]
-universal = 0
+import json
+import logging
+import pytest
+
+from aet.node import SchemaNode
+
+from . import (
+    NODE_RESOURCE_SCHEMA_EASY,
+    NODE_RESOURCE_SCHEMA_MED
+)
 
 
-[metadata]
-license_file = LICENSE
-description-file = README.md
+LOG = logging.getLogger('UI-TEST')
+LOG.setLevel(logging.DEBUG)
 
 
-[aliases]
-test = pytest
-
-
-[tool:pytest]
-python_files = tests/test*.py
-addopts = --maxfail=100 -p no:warnings
- # For super verbose tests...
-log_cli = 1
-log_cli_level = DEBUG
-log_cli_format = %(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)
-log_cli_date_format=%Y-%m-%d %H:%M:%S
-
-
-[flake8]
-max-line-length = 120
-ignore =
-        F403,
-        F405,
-        W503,
-        W504
-exclude =
-    */.eggs/*
-    */__pycache__/*
-    */test_sdk.py
-    *pyc
+@pytest.mark.parametrize("schema", [
+    (NODE_RESOURCE_SCHEMA_EASY),
+    (NODE_RESOURCE_SCHEMA_MED),
+])
+@pytest.mark.ui
+def test__node_create(schema):
+    node = SchemaNode(schema)
+    LOG.error(json.dumps(node.toJSON(), indent=2))
+    assert(node is not None)
