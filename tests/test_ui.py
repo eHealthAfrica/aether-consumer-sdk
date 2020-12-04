@@ -26,7 +26,8 @@ from aet.node import SchemaNode
 
 from . import (
     NODE_RESOURCE_SCHEMA_EASY,
-    NODE_RESOURCE_SCHEMA_MED
+    NODE_RESOURCE_SCHEMA_MED,
+    NODE_RESOURCE_SCHEMA_HARD
 )
 
 
@@ -37,6 +38,7 @@ LOG.setLevel(logging.DEBUG)
 @pytest.mark.parametrize("schema", [
     (NODE_RESOURCE_SCHEMA_EASY),
     (NODE_RESOURCE_SCHEMA_MED),
+    (NODE_RESOURCE_SCHEMA_HARD),
 ])
 @pytest.mark.ui
 def test__node_create(schema):

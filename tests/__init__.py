@@ -676,10 +676,10 @@ def mocked_stuck_api(mocked_stuck_consumer) -> Iterable[APIServer]:
 NODE_RESOURCE_SCHEMA_EASY = '''
 {
     "$schema": "http://json-schema.org/draft-07/schema",
-    "$id": "http://example.com/example.json",
+    "$id": "stream-consumer/restcall.json",
     "type": "object",
-    "title": "Basic Requirements",
-    "description": "The Minimum required for any Consumer Resource",
+    "title": "RestCall",
+    "description": "A Stream Consumer RestCall",
     "default": {},
     "additionalProperties": true,
     "required": [
@@ -714,10 +714,10 @@ NODE_RESOURCE_SCHEMA_EASY = '''
 NODE_RESOURCE_SCHEMA_MED = '''
 {
     "$schema": "http://json-schema.org/draft-07/schema",
-    "$id": "http://example.com/example.json",
+    "$id": "stream-consumer/jscall.json",
     "type": "object",
-    "title": "Basic Requirements",
-    "description": "The Minimum required for any Consumer Resource",
+    "title": "Javascript Call",
+    "description": "A Stream Consumer Javascript Call",
     "default": {},
     "additionalProperties": true,
     "required": [
@@ -813,7 +813,7 @@ NODE_RESOURCE_SCHEMA_MED = '''
 NODE_RESOURCE_SCHEMA_HARD = '''
 {
   "$schema": "http://json-schema.org/draft-07/schema",
-  "$id": "http://example.com/example.json",
+  "$id": "stream-consumer/pipeline.json",
   "type": "object",
   "title": "The Root Schema",
   "description": "The root schema comprises the entire JSON document.",
