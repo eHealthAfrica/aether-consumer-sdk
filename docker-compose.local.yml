@@ -1,0 +1,26 @@
+version: "2.1"
+
+services:
+
+  # ---------------------------------
+  # Aether Kafka Containers
+  # ---------------------------------
+
+  redis:
+    image: redis:alpine
+
+
+  # ---------------------------------
+  # Aether Consumer SDK
+  # ---------------------------------
+
+  consumer:
+    build: .
+    env_file:
+      - tests/local_environment.env
+    ports:
+      - 9013:9013
+    volumes:
+      - .:/code
+    command:
+      serve

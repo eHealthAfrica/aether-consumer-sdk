@@ -1,0 +1,3 @@
+graft aet/static
+graft aet/templates
+global-exclude *.pyc

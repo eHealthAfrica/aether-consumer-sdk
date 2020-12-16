@@ -59,6 +59,7 @@ setup(
         'pytest-runner'
     ],
     packages=find_packages(),
+    include_package_data=True,
     namespace_packages=['aet'],
     keywords=['aet', 'aether', 'kafka', 'consumer'],
     classifiers=[

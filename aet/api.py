@@ -21,9 +21,10 @@
 import logging
 from functools import wraps
 import json
+from os import path
 from typing import ClassVar, Dict, List, TYPE_CHECKING, Union
 
-from flask import Flask, Request, Response, request, jsonify
+from flask import Flask, Request, Response, request, jsonify, render_template
 from webtest.http import StopableWSGIServer
 
 from .exceptions import ConsumerHttpException
@@ -54,9 +55,11 @@ class APIServer(object):
         task_manager: 'TaskHelper',
         settings: 'Settings'
     ) -> None:
+        LOG.debug('Initializing API')
         type(self)._allowed_types = {
             _cls.name: _cls.public_actions for _cls in consumer.job_class._resources
         }
+        LOG.debug(type(self)._allowed_types)
         type(self)._allowed_types['job'] = consumer.job_class.public_actions
         LOG.debug(f'Allowed Operations: {type(self)._allowed_types}')
         self.settings = settings
@@ -66,7 +69,8 @@ class APIServer(object):
     def serve(self):
         name = self.settings.get('CONSUMER_NAME')
         LOG.info(f'Starting API: {name}')
-        self.app = Flask(name)  # noqa
+        dir = path.dirname(__file__)
+        self.app = Flask(name, template_folder=f'{dir}/templates', static_folder=f'{dir}/static')  # noqa
         try:
             handler = self.app.logger.handlers[0]
         except IndexError:
@@ -138,6 +142,10 @@ class APIServer(object):
         # URLS configured here
         # this MUST be done at runtime. Can't set the routes via decorator
         # Add endpoints for all registered types
+        self.register(
+            '/',
+            self.serve_ui,
+            methods=['GET'])
         self.register(
             '<string:_type>/add',
             self.add,
@@ -233,6 +241,12 @@ class APIServer(object):
                     return Response(expired, 500)
             except Exception as err:
                 return Response(f"Unexpected error: {err}", 500)
+
+    # UI
+    @requires_auth
+    @check_tenant
+    def serve_ui(self, tenant=None):
+        return render_template('app.html', tenant=tenant)
 
     # Generic CRUD
 

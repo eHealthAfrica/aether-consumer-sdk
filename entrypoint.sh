@@ -39,6 +39,10 @@ PYTEST="pytest --cov-report term-missing --cov=aet -p no:cacheprovider"
 
 case "$1" in
 
+    serve )
+        python ./serve.py "${@:2}"
+    ;;
+
     test )
         echo 'Running ALL Tests...'
         flake8

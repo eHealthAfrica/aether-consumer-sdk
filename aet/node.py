@@ -131,6 +131,9 @@ class JSchemaType(ABC):
             LOG.debug([err, type(self)])
         return self.toJSON()
 
+    def stats(self):
+        return None
+
     def toJSON(self):
         return str(self.value)
 
@@ -161,6 +164,21 @@ class JSchemaObject(JSchemaType):
                 v.reference_to(self, 'definitions')
                 for v in self.value.get('definitions', {}).values()]
         return meta
+
+    def stats(self):
+        data = self.toJSON()
+        stats = {
+            'fields_size': len(data.get('fields', [])),
+            'definitions_size': len(data.get('definitions', []))
+        }
+        if self.value.get('definitions', {}):
+            stats['definitions'] = [
+                v.stats()
+                for v in self.value.get('definitions', {}).values()]
+        if self.value.get('fields', {}):
+            stats['fields'] = [
+                v.stats()
+                for v in self.value.get('fields', {}).values()]
 
 
 class JSchemaList(JSchemaType):
@@ -225,7 +243,6 @@ class SchemaNode(object):
     references: Optional[Dict[str, JSchemaType]]
 
     def __init__(self, schema: Union[str, Dict]):
-        # LOG.error(f'init {schema}')
         try:
             obj = schema if not isinstance(schema, str) else json.loads(schema)
         except json.decoder.JSONDecodeError as der:
@@ -261,3 +278,6 @@ class SchemaNode(object):
     def toJSON(self):
         if self.node is not None:
             return self.node.toJSON()
+
+    def stats(self):
+        return self.node.stats()

@@ -74,13 +74,17 @@ class BaseConsumer(object):
         self.task = TaskHelper(
             self.consumer_settings,
             redis_instance=redis_instance)
+        LOG.debug('Starting Job Manager')
         self.job_manager = JobManager(self.task, job_class=job_class)
+        LOG.debug(f'Starting API: {self.consumer_settings}')
         self.serve_api(self.consumer_settings)
+        LOG.debug('Ready')
 
     # Control API
 
     def serve_api(self, settings):
         self.api = APIServer(self, self.task, settings)
+        LOG.debug('Creating API')
         self.api.serve()
 
     def stop(self, *args, **kwargs):
