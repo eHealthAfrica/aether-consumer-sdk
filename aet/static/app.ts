@@ -3,18 +3,96 @@ var sockets = {};
 
 var numSocket = new Rete.Socket('Number value');
 
+var test_schema = {
+  "definitions": {},
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://example.com/root.json",
+  "type": "object",
+  "title": "The Root Schema",
+  "required": [
+    "id",
+    "say",
+    "wait"
+  ],
+  "properties": {
+    "id": {
+      "$id": "#/properties/id",
+      "type": "string",
+      "title": "The Id Schema",
+      "default": "",
+      "examples": [
+        "an-id"
+      ],
+      "pattern": "^(.*)$"
+    },
+    "say": {
+      "$id": "#/properties/say",
+      "type": "string",
+      "title": "The Say Schema",
+      "default": "",
+      "examples": [
+        "something"
+      ],
+      "pattern": "^(.*)$"
+    },
+    "wait": {
+      "$id": "#/properties/wait",
+      "type": "integer",
+      "title": "The Wait Schema",
+      "default": 0,
+      "examples": [
+        1
+      ]
+    }
+  }
+}
+
+
+function formatLabelForUISchema(key, def_){
+  return {
+    component: 'label',
+    fieldOptions: {
+      attrs: {
+        for: key,
+      },
+      class: ['font-weight-bold'],
+      domProps: {
+        innerHTML: def_['title'],
+      }
+    }
+  }
+}
+
+function formatSchemaFieldForUISchema(key, def_){
+  return {
+    component: 'input',
+    model: key,
+    fieldOptions: {
+      attrs: {
+        id: key,
+      },
+      class: ['form-control'],
+      on: ['input'],
+      attrs: {
+        placeholder: def_['default']
+      }
+    }
+  }
+}
+
 function makeBasicUISchema(schema_){
+  res = []
+  for (const [key, def_] of Object.entries(schema_['properties'])) {
+    res.push(formatLabelForUISchema(key, def_));
+    res.push(formatSchemaFieldForUISchema(key, def_));
+  }
   return [
     {
-      component: 'input',
-      model: 'firstName',
-      fieldOptions: {
-        class: ['form-control'],
-        on: ['input'],
-        attrs: {
-          placeholder: 'Please enter your first name'
-        }
-      }
+      component: 'div',
+        fieldOptions: {
+          class: ['form-group'],
+        },
+        children: res
     }
   ]
 }
@@ -41,6 +119,7 @@ function makeVueSchemaController(schema_){
       },
       onChangeState(value) {
         console.log('onChangeState')
+        console.log(value)
         // console.log(value)
         // this.state = value;
       },
@@ -158,15 +237,15 @@ class PolyComponent extends Rete.Component{
                 console.log(name_);
         });
         var out1 = new Rete.Output(this.name, this.name, sockets[this.name]);
-        var schema_ = {
-        type: 'object',
-        properties: {
-          firstName: {
-            type: 'string',
-          }
-        }
-      }
-        return node.addControl(new SchemaControl(this.editor, 'num', schema_)).addOutput(out1);
+        // var schema_ = {
+        //   type: 'object',
+        //   properties: {
+        //     firstName: {
+        //       type: 'string',
+        //     }
+        //   }
+        // }
+        return node.addControl(new SchemaControl(this.editor, 'num', test_schema)).addOutput(out1);
     }
 
     worker(node, inputs, outputs) {
