@@ -8,7 +8,7 @@ var test_schema = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "http://example.com/root.json",
   "type": "object",
-  "title": "The Root Schema",
+  "title": "TestSchema",
   "required": [
     "id",
     "say",
@@ -18,7 +18,7 @@ var test_schema = {
     "id": {
       "$id": "#/properties/id",
       "type": "string",
-      "title": "The Id Schema",
+      "title": "Id",
       "default": "",
       "examples": [
         "an-id"
@@ -28,7 +28,7 @@ var test_schema = {
     "say": {
       "$id": "#/properties/say",
       "type": "string",
-      "title": "The Say Schema",
+      "title": "Say",
       "default": "",
       "examples": [
         "something"
@@ -38,7 +38,7 @@ var test_schema = {
     "wait": {
       "$id": "#/properties/wait",
       "type": "integer",
-      "title": "The Wait Schema",
+      "title": "Wait",
       "default": 0,
       "examples": [
         1
@@ -57,7 +57,7 @@ function formatLabelForUISchema(key, def_){
       },
       class: ['font-weight-bold'],
       domProps: {
-        innerHTML: def_['title'],
+        innerHTML: `<p>${def_['title']}`,
       }
     }
   }
@@ -67,9 +67,16 @@ function formatSchemaFieldForUISchema(key, def_){
   return {
     component: 'input',
     model: key,
+    errorOptions: {
+      class: [
+        "is-invalid",
+        'alert alert-danger'
+      ]
+    },
     fieldOptions: {
       attrs: {
         id: key,
+        type: def_['type']
       },
       class: ['form-control'],
       on: ['input'],
@@ -80,11 +87,24 @@ function formatSchemaFieldForUISchema(key, def_){
   }
 }
 
+function formatSchemaSubtitleForUISchema(key, def_){
+  return {
+    component: 'small',
+    fieldOptions: {
+      class: ['text-muted'],
+      domProps: {
+        innerHTML: `(${def_['type']})</p>`
+      }
+    }
+  }
+}
+
 function makeBasicUISchema(schema_){
   res = []
   for (const [key, def_] of Object.entries(schema_['properties'])) {
     res.push(formatLabelForUISchema(key, def_));
     res.push(formatSchemaFieldForUISchema(key, def_));
+    res.push(formatSchemaSubtitleForUISchema(key, def_));
   }
   return [
     {
@@ -99,14 +119,18 @@ function makeBasicUISchema(schema_){
 
 function makeVueSchemaController(schema_){
   return {
-    name: 'something',
+    name: schema_['title'],
     props: ['readonly', 'emitter', 'ikey', 'getData', 'putData'],
-    template: '<vue-form-json-schema :model="model" :schema="schema" :ui-schema="uiSchema" v-on:change="onChange" v-on:state-change="onChangeState" v-on:validated="onValidated"></vue-form-json-schema>',
+    template: '<vue-form-json-schema :options="options" :model="model" :schema="schema" :ui-schema="uiSchema" v-on:change="onChange" v-on:state-change="onChangeState" v-on:validated="onValidated"></vue-form-json-schema>',
     data() {
       return {
         model: {},
         state: {},
         valid: false,
+        options: {
+          castToSchemaType: true,
+          showValidationErrors: false,
+        },
         schema: schema_,
         uiSchema: makeBasicUISchema(schema_)
       }
@@ -114,36 +138,42 @@ function makeVueSchemaController(schema_){
     methods: {
       onChange(value) {
         console.log('onChange')
-        // console.log(value)
+        this.model = value;
+        console.log(value)
         // this.state = value;
+        if (this.ikey){
+          this.putData(this.ikey, this.value)
+        }
       },
       onChangeState(value) {
-        console.log('onChangeState')
-        console.log(value)
-        // console.log(value)
+        // console.log('onChangeState');
         // this.state = value;
+        // console.log(value)
+        // // console.log(value['vfjsErrors'])
+        // value['vfjsErrors'].forEach(async function(err){
+        //         console.log([err.dataPath, err.message]);
+        // });
+        
       },
       onValidated(value) {
-        console.log('onValidated')
+        // console.log(`onValidated: ${value}`)
+        this.validated = value;
         // console.log(value)
-        // this.valid = value;
+        if (this.validated){
+          this.emitter.trigger('process');
+        }
       },
       change(e){
         console.log('change')
         console.log(e)
-        // this.value = +e.target.value;
-        // this.update();
       },
       update() {
         console.log('update')
-        // if (this.ikey)
-        //   this.putData(this.ikey, this.value)
-        // this.emitter.trigger('process');
       }
     },
     mounted() {
       console.log('mounted')
-      // this.value = this.getData(this.ikey);
+      this.value = this.getData(this.ikey);
     }
   }
 }
@@ -153,12 +183,18 @@ class SchemaControl extends Rete.Control {
 
   constructor(emitter, key, schema_, readonly) {
     super(key);
+    this.name = schema_['title']
     this.component = makeVueSchemaController(schema_)
     this.props = { emitter, ikey: key, readonly };
   }
 
+  getData(a){
+    console.log(`schemacontrol ${this.name} getData ${a}`);
+  }
+
   setValue(val) {
-    // this.vueContext.value = val;
+    console.log(`schemacontrol caught ${val}`);
+    this.vueContext.value = val;
   }
 }
 
@@ -229,6 +265,7 @@ class PolyComponent extends Rete.Component{
     builder(node) {
         console.log(Object.keys(sockets))
         var inputs = this.spec["input"];
+        var schema_ = this.spec["schema"];
         var editor = this.editor;
         inputs.forEach(async function(name_){
                 node.addInput(
@@ -237,15 +274,7 @@ class PolyComponent extends Rete.Component{
                 console.log(name_);
         });
         var out1 = new Rete.Output(this.name, this.name, sockets[this.name]);
-        // var schema_ = {
-        //   type: 'object',
-        //   properties: {
-        //     firstName: {
-        //       type: 'string',
-        //     }
-        //   }
-        // }
-        return node.addControl(new SchemaControl(this.editor, 'num', test_schema)).addOutput(out1);
+        return node.addControl(new SchemaControl(this.editor, this.name, schema_)).addOutput(out1);
     }
 
     worker(node, inputs, outputs) {
@@ -297,7 +326,10 @@ class AddComponent extends Rete.Component {
 
     // for name, spec yield new PolyComponent(name, spec)
     // var components = [new NumComponent(), new AddComponent()];
-    var components = [new PolyComponent("a", {"input": ["b"]}), new PolyComponent("b", {"input": ["a"]})];
+    var components = [
+      new PolyComponent("TestSchemaA", {"input": ["TestSchemaB"], "schema": test_schema}),
+      new PolyComponent("TestSchemaB", {"input": ["TestSchemaA"], "schema": test_schema})
+    ];
 
     var engine = new Rete.Engine('demo@0.1.0');
     
