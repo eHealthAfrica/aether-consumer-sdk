@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, List, Union
 
 from aether.python.redis.task import Task, TaskEvent, TaskHelper
 
-from .exceptions import ConsumerHttpException
+from .exceptions import ConsumerHttpException, MessageHandlingException
 from .helpers import classproperty, require_property
 from .jsonpath import CachedParser
 from .logger import get_logger, callback_logger
@@ -187,6 +187,8 @@ class BaseJob(AbstractResource):
                     messages = self._get_messages(config)
                     if messages:
                         self._handle_messages(config, messages)
+                except MessageHandlingException as mhe:
+                    self._on_message_handle_exception(mhe)
                 except RuntimeError as rer:
                     self.log.critical(f'RuntimeError: {self._id} | {rer}')
                     self.safe_sleep(self.sleep_delay)
@@ -215,6 +217,9 @@ class BaseJob(AbstractResource):
         sleep(self.sleep_delay)
         LOG.debug('Handling Messages')
         self.value += 1
+
+    def _on_message_handle_exception(self, mhe: MessageHandlingException):
+        pass
 
     def _cause_exception(self, exception: Exception = ValueError) -> None:
         # intentionally cause the thread to crash for testing purposes

@@ -785,6 +785,16 @@ def test_itest_add_ten_jobs(IJobManager):
 
 
 @pytest.mark.unit
+def test_itest_throw_catchable_error(IJobManager):
+    for job in IJobManager.jobs.values():
+        assert(job.exceptions == 0)
+        job.throw_catchable()
+    sleep(20)
+    for job in IJobManager.jobs.values():
+        assert(job.exceptions == 1), job.exceptions
+
+
+@pytest.mark.unit
 def test_itest_modify_resources(IJobManager):
     new_value = 2
     for res in i_resources:

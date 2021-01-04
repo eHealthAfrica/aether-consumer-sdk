@@ -32,3 +32,15 @@ class ConsumerHttpException(Exception):
 
     def as_response(self):
         return Response(self.message, self.status_code)
+
+
+class MessageHandlingException(Exception):
+    '''
+    Generic exception thrown by implementors of BaseJob within their
+    implementation of _get_messages or _handle_messages which will then trigger
+    the _on_message_handle_exception() block
+    '''
+
+    def __init__(self, message: str, details=None, **kwargs):
+        super().__init__(message)
+        self.details = details or {}
