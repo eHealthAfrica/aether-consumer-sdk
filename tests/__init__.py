@@ -42,6 +42,7 @@ from spavro.schema import parse as ParseSchema
 from aet import settings
 from aet.api import APIServer
 from aet.consumer import BaseConsumer
+from aet.exceptions import MessageHandlingException
 from aet.job import BaseJob, JobManager, JobStatus
 from aet.jsonpath import CachedParser  # noqa
 from aet.kafka import KafkaConsumer
@@ -296,10 +297,18 @@ class IJob(BaseJob):
     }
     '''
 
+    def __init__(self, _id: str, tenant: str, resources, context):
+        super().__init__(_id, tenant, resources, context)
+        self.exceptions: int = 0
+        self.has_thrown: bool = False
+
     def _get_messages(self, config):
         LOG.debug(f'{self._id} gettings messages')
         messages = []
         resources = self.get_resources('resource', config)
+        if self.has_thrown:
+            self.has_thrown = False
+            raise MessageHandlingException('', details={'error_code': 1})
         if not resources:
             raise RuntimeError('No resources!')
         for r in resources:
@@ -314,9 +323,16 @@ class IJob(BaseJob):
         for m in messages:
             LOG.debug(m)
 
+    def _on_message_handle_exception(self, mhe: MessageHandlingException):
+        LOG.debug(f'threw catchable on {self._id}')
+        self.exceptions += mhe.details['error_code']
+
     def share_resource(self, _id, prop):
         r = self.get_resource('resource', _id)
         return r.definition.get(prop)
+
+    def throw_catchable(self):
+        self.has_thrown = True
 
 
 class StuckJob(IJob):
