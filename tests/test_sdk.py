@@ -56,7 +56,7 @@ TENANT = 'test'
 def test_settings(fake_settings):
     cset = fake_settings
     settings_copy = cset.copy()
-    assert('C' in cset)  # exclude doesn't matter in orignial
+    assert('C' in cset)  # exclude doesn't matter in original
     assert('B' not in settings_copy)  # exclude works on copies
     assert(settings_copy.get('D') == 2)  # alias works on both
     assert(cset.get('D') == 2)  # alias works on both
@@ -93,7 +93,7 @@ def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args
         sleep(5)
     iter_consumer.subscribe([topic])
     # iter_consumer.seek_to_beginning()
-    # more than a few hundres is too large to grab in one pass when not serialized
+    # more than a few hundreds is too large to grab in one pass when not serialized
     for x in range(int(10 * topic_size / 500)):
         messages = iter_consumer.poll_and_deserialize(timeout=3, num_messages=500)
         for msg in messages:

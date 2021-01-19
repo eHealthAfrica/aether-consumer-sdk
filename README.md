@@ -7,7 +7,7 @@ Aether Output Connectors are a powerful way of feeding foreign systems with data
     - Job API and persistence in Redis
     - A Base Job class that dynamically watches a Resource for changes.
     - Multi-tenancy support for Job and Resource types.
-  - Extension of the basic Kafka Consumer to include. 
+  - Extension of the basic Kafka Consumer to include.
     - Fast deserialization of messages with Spavro
     - Value based filtering of whole messages.
     - Exclusion of fields from a read message based on data classification
@@ -23,7 +23,7 @@ _To get started, grab the package from pip:_
 The SDK includes a basic data model consisting of two types.
 
   - *Resources*
-    - A resource is a dependency that multi `Jobs` might rely on. For example, if we're creating a RDBMS connector, a resource could contain the connection information and credentials for a database instance, like: 
+    - A resource is a dependency that multi `Jobs` might rely on. For example, if we're creating a RDBMS connector, a resource could contain the connection information and credentials for a database instance, like:
     ```json
     {
         "id": "payroll-postgres",
@@ -34,7 +34,7 @@ The SDK includes a basic data model consisting of two types.
     ```
 
   - *Jobs*
-    - A job is the core unit of work that a consumer will perform. What a job does it entirely dependant on your implementation. In an RBDMS connector, a job could monitor a `topic` called `employees` and send that data to a `table` called `employees` in an external RDBMS called `payroll-postgres` that we have defined as a `Resource`.
+    - A job is the core unit of work that a consumer will perform. What a job does it entirely dependant on your implementation. In an RDBMS connector, a job could monitor a `topic` called `employees` and send that data to a `table` called `employees` in an external RDBMS called `payroll-postgres` that we have defined as a `Resource`.
     ```json
     {
         "id": "forward-employees-to-pg",
@@ -80,7 +80,7 @@ _Jobs only_:
 | `/{type}/status`    | `STATUS`      | `[POST or GET ?id={id}]`        |
 
 For example, to get the `job` with `id = 0001` you send a GET request to:
-`http://consumer-url/job/get?id=0001` 
+`http://consumer-url/job/get?id=0001`
 
 
 ### Implementing Consumer Behavior
@@ -135,7 +135,7 @@ new_records = consumer.poll_and_deserialize(
     max_records=100
 )
 
-for parition_key, packages in new_records.items():
+for partition_key, packages in new_records.items():
     for package in packages:
         schema = package.get('schema')
         messages = package.get('messages')
@@ -150,7 +150,7 @@ Since any filtering based on the contents of a message require comprehension of 
 
 ## Filtering Functionality
 
-It is a common requirement to take a subset of the data in a particular topic and make it available to downstream sytems via an Output Connector. There are two general classes of filtering that we support.
+It is a common requirement to take a subset of the data in a particular topic and make it available to downstream systems via an Output Connector. There are two general classes of filtering that we support.
 
 - Message Emit Filtering: Filtering of whole messages based on one of the values in the message's fields.
 - Field Masking Filtering: Removing some fields from a message based on a classification and privledge system.
@@ -188,7 +188,7 @@ This message would be emitted for downstream systems.
 
 This message would not be made available, since the value at path ```$.approved``` is ```False``` which is not a member of ```[True]```.
 
-It is not requireed that ```aether_emit_flag_values``` be a boolean. For example this is a valid configuration:
+It is not required that ```aether_emit_flag_values``` be a boolean. For example this is a valid configuration:
 
 ```python
 {

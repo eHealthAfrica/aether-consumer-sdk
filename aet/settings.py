@@ -23,7 +23,7 @@ import os
 class Settings(dict):
     # A container for our settings
     def __init__(self, file_path=None, alias=None, exclude=None):
-        # takes precident over env and initial values. Case sensitive
+        # takes precedent over env and initial values. Case sensitive
         # useful for tests
         self.overrides = {}
         if not exclude:
