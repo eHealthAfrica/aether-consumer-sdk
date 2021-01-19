@@ -1,6 +1,9 @@
-FROM python:3.7-slim-stretch
+FROM python:3.8-slim-buster
 
 WORKDIR /code
+ENTRYPOINT ["/code/entrypoint.sh"]
+
+COPY ./requirements.txt /code/requirements.txt
 
 RUN apt-get update -qq && \
     apt-get -qq \
@@ -8,13 +11,8 @@ RUN apt-get update -qq && \
         --allow-downgrades \
         --allow-remove-essential \
         --allow-change-held-packages \
-        install gcc
-
-COPY ./requirements.txt /code/requirements.txt
-
-RUN pip install -q --upgrade pip && \
+        install gcc > /dev/null && \
+    pip install -q --upgrade pip && \
     pip install -q -r requirements.txt
 
 COPY ./ /code/
-
-ENTRYPOINT ["/code/entrypoint.sh"]
