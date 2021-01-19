@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2018 by eHealth Africa : http://www.eHealthAfrica.org
 #
 # See the NOTICE file distributed with this work for additional information
@@ -25,7 +23,7 @@ import os
 class Settings(dict):
     # A container for our settings
     def __init__(self, file_path=None, alias=None, exclude=None):
-        # takes precident over env and initial values. Case sensitive
+        # takes precedent over env and initial values. Case sensitive
         # useful for tests
         self.overrides = {}
         if not exclude:

@@ -1,4 +1,4 @@
-version: "2.1"
+version: "3.7"
 
 services:
 
@@ -7,7 +7,7 @@ services:
   # ---------------------------------
 
   zookeeper-test:
-    image: confluentinc/cp-zookeeper:5.5.1
+    image: confluentinc/cp-zookeeper:5.5.3
     environment:
       ZOOKEEPER_CLIENT_PORT: 32181
       ZOOKEEPER_TICK_TIME: 2000
@@ -15,7 +15,7 @@ services:
       - moby:127.0.0.1
 
   kafka-test:
-    image: confluentinc/cp-kafka:5.5.1
+    image: confluentinc/cp-kafka:5.5.3
     links:
       - zookeeper-test
     environment:

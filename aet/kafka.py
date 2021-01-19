@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2018 by eHealth Africa : http://www.eHealthAfrica.org
 #
 # See the NOTICE file distributed with this work for additional information
@@ -194,7 +192,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
         # None of the methods in the Python Kafka library deserialize messages, which is a
         # required step in order to filter fields which may be masked, or to only publish
         # messages which meet a certain condition. For this reason, we extend the poll() method
-        # from the Kafka library to handle deserialzation in a fast and reliable way. We also
+        # from the Kafka library to handle deserialization in a fast and reliable way. We also
         # implement masking and field filtering in this method, based on the consumer configuration
         # passed in __init__ and the schema of each message.
 
