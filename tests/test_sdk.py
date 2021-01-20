@@ -481,7 +481,8 @@ def test_cached_parser__bad_path():
                         ('resource/validate_pretty', -1, False),
                         ('resource/null?id=fake', -1, True),  # properly dispatched to missing JM
                         ('bad_resource/list', {}, True),
-                        ('health', 'healthy', False)
+                        ('health', 'healthy', False),
+                        ('check-consumer', -1, False),
 ])
 def test_api_get_calls(call, result, raises_error, mocked_api):
     user = settings.CONSUMER_CONFIG.get('ADMIN_USER')

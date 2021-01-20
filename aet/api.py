@@ -26,7 +26,7 @@ from webtest.http import StopableWSGIServer
 
 from .exceptions import ConsumerHttpException
 from .logger import get_logger
-from .settings import CONSUMER_CONFIG
+from .settings import CONSUMER_CONFIG, VERSION, REVISION
 
 LOG = get_logger('API')
 
@@ -171,6 +171,7 @@ class APIServer(object):
             methods=['GET', 'POST'])
 
         self.register('health', self.request_healthcheck)
+        self.register('check-consumer', self.request_consumer_info)
 
     def register(self, route_name, fn, **options) -> None:
         self.app.add_url_rule('/%s' % route_name, route_name, view_func=fn, **options)
@@ -231,6 +232,14 @@ class APIServer(object):
                     return Response(expired, 500)
             except Exception as err:
                 return Response(f'Unexpected error: {err}', 500)
+
+    def request_consumer_info(self) -> Response:
+        with self.app.app_context():
+            return Response({
+                'consumer_name': self.settings.get('CONSUMER_NAME'),
+                'consumer_version': VERSION,
+                'consumer_revision': REVISION,
+            })
 
     # Generic CRUD
 
