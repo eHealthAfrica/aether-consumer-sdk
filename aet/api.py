@@ -226,11 +226,11 @@ class APIServer(object):
             try:
                 expired = self.consumer.healthcheck()
                 if not expired:
-                    return Response({"healthy": True})
+                    return Response({'healthy': True})
                 else:
                     return Response(expired, 500)
             except Exception as err:
-                return Response(f"Unexpected error: {err}", 500)
+                return Response(f'Unexpected error: {err}', 500)
 
     # Generic CRUD
 

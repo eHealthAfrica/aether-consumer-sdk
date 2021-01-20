@@ -43,7 +43,7 @@ LOG = get_logger('Resource')
 # work around to make MethodDesc json serializable
 
 def _default(self, obj):
-    return getattr(obj.__class__, "to_json", _default.default)(obj)
+    return getattr(obj.__class__, 'to_json', _default.default)(obj)
 
 
 _default.default = json.JSONEncoder.default  # Save unmodified default.

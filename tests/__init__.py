@@ -59,7 +59,7 @@ LOG = get_logger('Test')
 
 here = os.path.dirname(os.path.realpath(__file__))
 
-kafka_server = "kafka-test:29092"
+kafka_server = 'kafka-test:29092'
 kafka_connection_retry = 10
 kafka_connection_retry_wait = 6
 # increasing topic_size may cause poll to be unable to get all the messages in one call.
@@ -391,7 +391,7 @@ def send_plain_messages(producer, topic, schema, messages, encoding, is_json=Tru
             val = msg['id'].encode(encoding)
         future = producer.send(
             topic,
-            key=str(msg.get("id")),
+            key=str(msg.get('id')),
             value=val
         )
         # block until it actually sends.
@@ -409,7 +409,7 @@ def send_avro_messages(producer, topic, schema, messages):
     writer.flush()
     raw_bytes = bytes_writer.getvalue()
     writer.close()
-    future = producer.send(topic, key=str(msg.get("id")), value=raw_bytes)
+    future = producer.send(topic, key=str(msg.get('id')), value=raw_bytes)
     # block until it actually sends.
     record_metadata = future.get(timeout=100)
     if not record_metadata:
@@ -418,7 +418,7 @@ def send_avro_messages(producer, topic, schema, messages):
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def TaskHelperSessionScope():
     task = TaskHelper(
         settings.CONSUMER_CONFIG,
@@ -430,7 +430,7 @@ def TaskHelperSessionScope():
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def IJobManager(TaskHelperSessionScope):
     task = TaskHelperSessionScope
     man = JobManager(task, IJob)
@@ -440,7 +440,7 @@ def IJobManager(TaskHelperSessionScope):
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def IJobManagerFNScope(TaskHelperSessionScope):
     task = TaskHelperSessionScope
     man = JobManager(task, IJob)
@@ -461,7 +461,7 @@ def fake_settings():
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def producer():
     producer = None
     for x in range(kafka_connection_retry):
@@ -472,23 +472,23 @@ def producer():
         except NoBrokersAvailable:
             sleep(kafka_connection_retry_wait)
     if not producer:
-        raise NoBrokersAvailable("Could not attach to kafka after %s seconds. Check configuration" %
+        raise NoBrokersAvailable('Could not attach to kafka after %s seconds. Check configuration' %
                                  (kafka_connection_retry * kafka_connection_retry_wait))
     yield producer
     producer.close()
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def topic_writer(producer):
     def _fn(topic=None, source=None, encoding='avro', is_json=True, include_schema=True):
         assets = test_schemas.get(source)
         if include_schema:
-            schema = assets.get("schema")
+            schema = assets.get('schema')
             schema = ParseSchema(json.dumps(schema, indent=2))
         else:
             schema = None
-        mocker = assets.get("mocker")
+        mocker = assets.get('mocker')
         messages = []
         # the parcel gets large if you stick too many messages in it.
         # 100 serialzed together effectively minimizes the impact of passing the schema.
@@ -513,112 +513,112 @@ def topic_writer(producer):
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def default_consumer_args():
     return deepcopy({
-        "aether_masking_schema_annotation": "aetherMaskingLevel",
-        "aether_emit_flag_field_path": "$.publish",
-        "aether_emit_flag_values": [True, False],
-        "aether_masking_schema_levels": [0, 1, 2, 3, 4, 5],
-        "aether_masking_schema_emit_level": 0,
-        "group.id": str(uuid4()),
-        "bootstrap.servers": kafka_server,
-        "auto.offset.reset": 'earliest'
+        'aether_masking_schema_annotation': 'aetherMaskingLevel',
+        'aether_emit_flag_field_path': '$.publish',
+        'aether_emit_flag_values': [True, False],
+        'aether_masking_schema_levels': [0, 1, 2, 3, 4, 5],
+        'aether_masking_schema_emit_level': 0,
+        'group.id': str(uuid4()),
+        'bootstrap.servers': kafka_server,
+        'auto.offset.reset': 'earliest'
     })
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def messages_test_json_utf8(topic_writer):
-    topic = "TestJSONMessagesUTF"
-    src = "TestBooleanPass"
+    topic = 'TestJSONMessagesUTF'
+    src = 'TestBooleanPass'
     messages = topic_writer(topic=topic, source=src, encoding='utf-8')
     return messages
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def messages_test_json_ascii(topic_writer):
-    topic = "TestJSONMessagesASCII"
-    src = "TestBooleanPass"
+    topic = 'TestJSONMessagesASCII'
+    src = 'TestBooleanPass'
     messages = topic_writer(topic=topic, source=src, encoding='ascii')
     return messages
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def messages_test_text_utf8(topic_writer):
-    topic = "TestPlainMessagesUTF"
-    src = "TestBooleanPass"
+    topic = 'TestPlainMessagesUTF'
+    src = 'TestBooleanPass'
     messages = topic_writer(topic=topic, source=src, encoding='utf-8', is_json=False)
     return messages
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def messages_test_text_ascii(topic_writer):
-    topic = "TestPlainMessagesASCII"
-    src = "TestBooleanPass"
+    topic = 'TestPlainMessagesASCII'
+    src = 'TestBooleanPass'
     messages = topic_writer(topic=topic, source=src, encoding='ascii', is_json=False)
     return messages
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def messages_test_boolean_pass(topic_writer):
-    topic = "TestBooleanPass"
+    topic = 'TestBooleanPass'
     messages = topic_writer(topic=topic, source=topic)
     return messages
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def messages_test_enum_pass(topic_writer):
-    topic = "TestEnumPass"
+    topic = 'TestEnumPass'
     messages = topic_writer(topic=topic, source=topic)
     return messages
 
 
 @pytest.mark.integration
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def messages_test_secret_pass(topic_writer):
-    topic = "TestTopSecret"
+    topic = 'TestTopSecret'
     messages = topic_writer(topic=topic, source=topic)
     return messages
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def sample_schema():
-    assets = test_schemas.get("TestBooleanPass")
-    return assets.get("schema")
+    assets = test_schemas.get('TestBooleanPass')
+    return assets.get('schema')
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def sample_message():
-    assets = test_schemas.get("TestBooleanPass")
-    mocker = assets.get("mocker")
+    assets = test_schemas.get('TestBooleanPass')
+    mocker = assets.get('mocker')
     yield mocker()[0]
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def sample_schema_top_secret():
-    assets = test_schemas.get("TestTopSecret")
-    return assets.get("schema")
+    assets = test_schemas.get('TestTopSecret')
+    return assets.get('schema')
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def sample_message_top_secret():
-    assets = test_schemas.get("TestTopSecret")
-    mocker = assets.get("mocker")
+    assets = test_schemas.get('TestTopSecret')
+    mocker = assets.get('mocker')
     yield mocker()[0]
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="function")
+@pytest.fixture(scope='function')
 def offline_consumer():
     consumer = None
 
@@ -644,7 +644,7 @@ def offline_consumer():
 
 # Consumer Assets
 @pytest.mark.unit
-@pytest.fixture(scope="module")
+@pytest.fixture(scope='module')
 def mocked_consumer():
     consumer = MockConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
     yield consumer
@@ -654,7 +654,7 @@ def mocked_consumer():
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="module")
+@pytest.fixture(scope='module')
 def mocked_stuck_consumer():
     consumer = MockStuckConsumer(settings.CONSUMER_CONFIG, settings.KAFKA_CONFIG)
     LOG.debug('Starting mocked_stuck_consumer')
@@ -666,7 +666,7 @@ def mocked_stuck_consumer():
 
 # API Assets
 @pytest.mark.unit
-@pytest.fixture(scope="module")
+@pytest.fixture(scope='module')
 def mocked_api(mocked_consumer) -> Iterable[APIServer]:
     yield mocked_consumer.api
     # teardown
@@ -677,7 +677,7 @@ def mocked_api(mocked_consumer) -> Iterable[APIServer]:
 
 
 @pytest.mark.unit
-@pytest.fixture(scope="module")
+@pytest.fixture(scope='module')
 def mocked_stuck_api(mocked_stuck_consumer) -> Iterable[APIServer]:
     yield mocked_stuck_consumer.api
     # teardown

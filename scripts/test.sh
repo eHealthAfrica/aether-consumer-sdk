@@ -19,11 +19,12 @@
 # under the License.
 set -Eeuo pipefail
 
-function kill_all {
+function kill_all () {
   echo "_________________________________________________ Killing Containers"
-  docker-compose kill
-  docker-compose down
+  docker-compose down -v
 }
+
+trap 'kill_all' EXIT
 
 MODE=test
 SCAFFOLD=True
@@ -45,7 +46,7 @@ kill_all
 if [[ $SCAFFOLD == True ]]
 then
     echo "_________________________________________________ Starting Kafka"
-    docker-compose up -d  zookeeper-test kafka-test
+    docker-compose up -d zookeeper-test kafka-test
 fi
 
 docker-compose up -d redis-test
@@ -59,6 +60,5 @@ echo "_________________________________________________ Running tests: $MODE"
 docker-compose run consumer-test $MODE
 
 echo "_________________________________________________ Finished Test"
-kill_all
 
 echo "_________________________________________________ END"
