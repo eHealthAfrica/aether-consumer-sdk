@@ -69,12 +69,12 @@ class KafkaConsumer(confluent_kafka.Consumer):
 
     # Adding these key/ value pairs to those handled by vanilla KafkaConsumer
     ADDITIONAL_CONFIG = {
-        "aether_masking_schema_annotation": "aetherMaskingLevel",
-        "aether_masking_schema_levels": [0, 1, 2, 3, 4, 5],
-        "aether_masking_schema_emit_level": 0,
-        "aether_emit_flag_required": False,
-        "aether_emit_flag_field_path": "$.approved",
-        "aether_emit_flag_values": [True]
+        'aether_masking_schema_annotation': 'aetherMaskingLevel',
+        'aether_masking_schema_levels': [0, 1, 2, 3, 4, 5],
+        'aether_masking_schema_emit_level': 0,
+        'aether_emit_flag_required': False,
+        'aether_emit_flag_field_path': '$.approved',
+        'aether_emit_flag_values': [True]
     }
     _topic_mask_configs: Dict[str, MaskConfig]
     _topic_filter_configs: Dict[str, FilterConfig]
@@ -97,9 +97,9 @@ class KafkaConsumer(confluent_kafka.Consumer):
 
     def _default_filter_config(self) -> FilterConfig:
         return FilterConfig(
-            requires_approval=self.config.get("aether_emit_flag_required", False),
-            check_condition_path=self.config.get("aether_emit_flag_field_path"),
-            pass_conditions=self.config.get("aether_emit_flag_values"))
+            requires_approval=self.config.get('aether_emit_flag_required', False),
+            check_condition_path=self.config.get('aether_emit_flag_field_path'),
+            pass_conditions=self.config.get('aether_emit_flag_values'))
 
     def _get_topic_filter_config(self, topic) -> FilterConfig:
         if topic not in self._topic_filter_configs:
@@ -139,9 +139,9 @@ class KafkaConsumer(confluent_kafka.Consumer):
 
     def _default_mask_config(self):
         return MaskConfig(
-            mask_query=self.config.get("aether_masking_schema_annotation", None),
-            mask_levels=self.config.get("aether_masking_schema_levels"),
-            emit_level=self.config.get("aether_masking_schema_emit_level"))
+            mask_query=self.config.get('aether_masking_schema_annotation', None),
+            mask_levels=self.config.get('aether_masking_schema_levels'),
+            emit_level=self.config.get('aether_masking_schema_emit_level'))
 
     def _get_topic_mask_config(self, topic):
         if topic not in self._topic_mask_configs:
@@ -165,11 +165,11 @@ class KafkaConsumer(confluent_kafka.Consumer):
         except ValueError:
             emit_index = -1  # emit level is off the scale, so we don't emit any classified data
         # parent node of matching field
-        query_string = "$.fields.[*].%s.`parent`" % config.mask_query
+        query_string = '$.fields.[*].%s.`parent`' % config.mask_query
         expr = parse(query_string)
         restricted_fields = [(match.value) for match in expr.find(schema)]
         restriction_map = [
-            [obj.get("name"), obj.get(config.mask_query)] for obj in restricted_fields]
+            [obj.get('name'), obj.get(config.mask_query)] for obj in restricted_fields]
         failing_values = [
             i[1] for i in restriction_map if config.mask_levels.index(i[1]) > emit_index]
 
@@ -226,8 +226,8 @@ class KafkaConsumer(confluent_kafka.Consumer):
                         topic
                 )
                 obj.close()  # don't forget to close your open IO object.
-                if package_result.get("schema") or len(package_result["messages"]) > 0:
-                    schema = package_result.get("schema")
+                if package_result.get('schema') or len(package_result['messages']) > 0:
+                    schema = package_result.get('schema')
                     for message_body in package_result['messages']:
                         result.append(Message(
                             key,
@@ -252,7 +252,7 @@ class KafkaConsumer(confluent_kafka.Consumer):
                     None
                 )
                 obj.close()  # don't forget to close your open IO object.
-                if len(package_result["messages"]) > 0:
+                if len(package_result['messages']) > 0:
                     for message_body in package_result['messages']:
                         result.append(Message(
                             key,
@@ -267,37 +267,37 @@ class KafkaConsumer(confluent_kafka.Consumer):
 
     def _reader_to_messages(self, reader, last_schema, mask, approval_filter, topic):
         package_result = {
-            "schema": None,
-            "messages": []
+            'schema': None,
+            'messages': []
         }
         # We can get the schema directly from the reader.
         # we get a mess of unicode that can't be json parsed so we need ast
         raw_schema = ast.literal_eval(str(reader.meta))
-        schema = json.loads(raw_schema.get("avro.schema"))
+        schema = json.loads(raw_schema.get('avro.schema'))
         filter_config = self._get_topic_filter_config(topic)
         mask_config = self._get_topic_mask_config(topic)
 
         if schema != last_schema.get(topic):
             last_schema[topic] = schema
-            package_result["schema"] = schema
+            package_result['schema'] = schema
             # prepare mask and filter
             approval_filter = self.get_approval_filter(filter_config)
             mask = self.get_mask_from_schema(schema, mask_config)
         else:
-            package_result["schema"] = last_schema
+            package_result['schema'] = last_schema
         for x, msg in enumerate(reader):
             # is message is ready for consumption, process it
             if approval_filter(msg):
                 # apply masking
                 processed_message = self.mask_message(msg, mask)
-                package_result["messages"].append(processed_message)
+                package_result['messages'].append(processed_message)
 
         return package_result, last_schema, mask, approval_filter
 
     def _unpack_bytes_message(self, reader):
         package_result = {
-            "schema": None,
-            "messages": [self._read_json(self._decode_text(reader))]
+            'schema': None,
+            'messages': [self._read_json(self._decode_text(reader))]
         }
         return package_result
 

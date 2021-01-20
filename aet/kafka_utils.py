@@ -51,8 +51,8 @@ def is_kafka_available(kafka_url, kafka_port):
             ConnectionRefusedError,
             socket.gaierror) as rce:
         LOG.debug(
-            "Could not connect to Kafka on url: %s:%s" % (kafka_url, kafka_port))
-        LOG.debug("Connection problem: %s" % rce)
+            'Could not connect to Kafka on url: %s:%s' % (kafka_url, kafka_port))
+        LOG.debug('Connection problem: %s' % rce)
         return False
     return True
 
@@ -63,27 +63,27 @@ def get_broker_info(kclient, scope='all'):
         md = kclient.list_topics(timeout=10)
         for b in iter(md.brokers.values()):
             if b.id == md.controller_id:
-                res['brokers'].append("{}  (controller)".format(b))
+                res['brokers'].append('{}  (controller)'.format(b))
             else:
-                res['brokers'].append("{}".format(b))
+                res['brokers'].append('{}'.format(b))
         for t in iter(md.topics.values()):
             t_str = []
             if t.error is not None:
-                errstr = ": {}".format(t.error)
+                errstr = ': {}'.format(t.error)
             else:
-                errstr = ""
+                errstr = ''
 
-            t_str.append("{} with {} partition(s){}".format(t, len(t.partitions), errstr))
+            t_str.append('{} with {} partition(s){}'.format(t, len(t.partitions), errstr))
 
             for p in iter(t.partitions.values()):
                 if p.error is not None:
-                    errstr = ": {}".format(p.error)
+                    errstr = ': {}'.format(p.error)
                 else:
-                    errstr = ""
+                    errstr = ''
 
                 t_str.append(
-                    f"partition {p.id} leader: {p.leader}, "
-                    f"replicas: {p.replicas}, isrs: {p.isrs}, err: {errstr}"
+                    f'partition {p.id} leader: {p.leader}, '
+                    f'replicas: {p.replicas}, isrs: {p.isrs}, err: {errstr}'
                 )
             res['topics'].append(t_str)
         if scope in res.keys():
@@ -138,7 +138,7 @@ def kafka_callback(err=None, msg=None, _=None, **kwargs):
         obj.write(msg.value())
         reader = DataFileReader(obj, DatumReader())
         for message in reader:
-            _id = message.get("id")
+            _id = message.get('id')
             if err:
                 LOG.error(f'NO-SAVE: {_id} in | err {err.name()}')
 
@@ -159,7 +159,7 @@ def produce(docs, schema, topic_name, producer, callback=None):
             else:
                 # Message doesn't have the proper format for the current schema.
                 LOG.debug(
-                    f"SCHEMA_MISMATCH:NOT SAVED! TOPIC:{topic_name}, ID:{_id}")
+                    f'SCHEMA_MISMATCH:NOT SAVED! TOPIC:{topic_name}, ID:{_id}')
         writer.flush()
         raw_bytes = bytes_writer.getvalue()
 

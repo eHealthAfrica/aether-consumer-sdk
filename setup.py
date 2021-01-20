@@ -21,7 +21,7 @@
 import os
 from setuptools import setup, find_packages
 
-VERSION = os.environ.get('VERSION', '100.0.0')
+VERSION = os.environ.get('VERSION', '1.0.0')
 
 setup(
     name='aet.consumer',
@@ -53,10 +53,11 @@ setup(
     tests_require=[
         'fakeredis',
         'flake8',
+        'flake8-quotes',
         'pytest',
         'pytest-cov',
         'pytest-lazy-fixture',
-        'pytest-runner'
+        'pytest-runner',
     ],
     packages=find_packages(),
     namespace_packages=['aet'],
@@ -69,5 +70,5 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Software Development :: Libraries :: Python Modules',
-    ]
+    ],
 )

@@ -53,7 +53,7 @@ The schemas for each type should be placed in `aet.consumer.BaseConsumer[schemas
 ### API
 
 The API operates on the types defined in the previous section. All registered types get the following behaviors by default:
-`'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE', 'SCHEMA'`
+`'READ', 'CREATE', 'DELETE', 'LIST', 'VALIDATE', 'SCHEMA'`.
 In addition, `Jobs` and only Jobs get the methods:
 `'PAUSE', 'RESUME', 'STATUS'`
 
@@ -113,15 +113,15 @@ The SDK features extending the KafkaConsumer are built on top of the standard [k
 
 ## Deserialization with Spavro
 
-There are many Avro libraries available for python. [Spavro] uses the syntax of the official python2 Avro library, while adding compatibility for Python3, and providing a 15x (de)serialization speed increase via C extensions. To support this functionality, we provide a ```poll_and_deserialize(timeout_ms, max_records)``` method, which mirrors the basic functionality of the ```poll()``` method from the kafka-python library, while providing deserialized messages in the following format:
+There are many Avro libraries available for python. [Spavro] uses the syntax of the official python2 Avro library, while adding compatibility for Python3, and providing a 15x (de)serialization speed increase via C extensions. To support this functionality, we provide a `poll_and_deserialize(timeout_ms, max_records)` method, which mirrors the basic functionality of the `poll()` method from the kafka-python library, while providing deserialized messages in the following format:
 ```python
 {
     "topic:{topic}-partition:{partition}" : [
         {
             "schema" : message_schema,
-            "messages": [messages]
-        }
-    ]
+            "messages": [messages],
+        },
+    ],
 }
 ```
 For example, we can poll for the latest 100 messages like this:
@@ -162,11 +162,11 @@ Filtering of whole messages is based on a field value contained in a message mat
 {
     "aether_emit_flag_required": True,
     "aether_emit_flag_field_path": "$.approved",
-    "aether_emit_flag_values": [True]
+    "aether_emit_flag_values": [True],
 }
 ```
 
-Emit filtering is enabled by default through  ```"aether_emit_flag_required" : True```. If you messages will not require filtering in this manner, set it to ```False``` Once a message is deserialized, the consumer finds the value housed at the JSONPath ```aether_emit_flag_field_path```. If that value is a member of the set configured in ```aether_emit_flag_values```. A small example, given the default configuration shown above.
+Emit filtering is enabled by default through `"aether_emit_flag_required" : True`. If you messages will not require filtering in this manner, set it to `False` Once a message is deserialized, the consumer finds the value housed at the JSONPath `aether_emit_flag_field_path`. If that value is a member of the set configured in `aether_emit_flag_values`. A small example, given the default configuration shown above.
 
 ```json
 {
@@ -186,14 +186,14 @@ This message would be emitted for downstream systems.
 }
 ```
 
-This message would not be made available, since the value at path ```$.approved``` is ```False``` which is not a member of ```[True]```.
+This message would not be made available, since the value at path `$.approved` is `False` which is not a member of `[True]`.
 
-It is not required that ```aether_emit_flag_values``` be a boolean. For example this is a valid configuration:
+It is not required that `aether_emit_flag_values` be a boolean. For example this is a valid configuration:
 
 ```python
 {
     "aether_emit_flag_field_path": "$.record_type",
-    "aether_emit_flag_values": ["routine_vaccination", "antenatal_vaccination"]
+    "aether_emit_flag_values": ["routine_vaccination", "antenatal_vaccination"],
 }
 ```
 This message will be emitted.
@@ -215,7 +215,7 @@ This message will _not_ be emitted.
 
 ## Field Masking Filter
 
-It is often a requirement that only a subset of a message be made available to a particular downstream system. In this case, we use field filtering. Field filtering requires an annotation in the Avro Schema of a message type on each field which might need to be stripped. This also implies that we have a information classification system which is appropriate for our data. For example, we could use this scale for the classification of governmental information ```["public", "confidential", "secret", "top secret", "ufos"]``` Where public information is the least sensitive, all the way up to highly classified information about the existence of UFOs.
+It is often a requirement that only a subset of a message be made available to a particular downstream system. In this case, we use field filtering. Field filtering requires an annotation in the Avro Schema of a message type on each field which might need to be stripped. This also implies that we have a information classification system which is appropriate for our data. For example, we could use this scale for the classification of governmental information `["public", "confidential", "secret", "top secret", "ufos"]` Where public information is the least sensitive, all the way up to highly classified information about the existence of UFOs.
 
 _Having these classifiers, we can use them in the Avro schema for a message type._
 ```json
@@ -290,14 +290,14 @@ Now we have the following message in a topic:
     "field5" : "e"
 }
 ```
-If we use an emit level of ```"aether_masking_schema_emit_level": "public"``` in the following configuration, only fields with that classification or less (including no classification) will be emitted.
+If we use an emit level of `"aether_masking_schema_emit_level": "public"` in the following configuration, only fields with that classification or less (including no classification) will be emitted.
 ```python
 {
     "aether_emit_flag_required": True,
     "aether_emit_flag_field_path": "$.publish",
     "aether_emit_flag_values": [True],
-    "aether_masking_schema_levels" : ["public", "confidential", "secret", "top secret", "ufos"]
-    "aether_masking_schema_emit_level": "public"
+    "aether_masking_schema_levels" : ["public", "confidential", "secret", "top secret", "ufos"],
+    "aether_masking_schema_emit_level": "public",
 }
 ```
 _The following message will be emitted:_
@@ -308,7 +308,7 @@ _The following message will be emitted:_
     "field1" : "a"
 }
 ```
-If the rest of the configuration remains, but we use ```"aether_masking_schema_emit_level": "secret"``` the message becomes.
+If the rest of the configuration remains, but we use `"aether_masking_schema_emit_level": "secret"` the message becomes.
 ```json
 {
     "id" : "a_guid",

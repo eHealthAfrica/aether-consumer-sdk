@@ -76,7 +76,7 @@ def test_settings_check(fake_settings):
 #
 #####
 @pytest.mark.kafka
-@pytest.mark.parametrize("messages,topic,is_json", [
+@pytest.mark.parametrize('messages,topic,is_json', [
     (pytest.lazy_fixture('messages_test_json_utf8'), 'TestJSONMessagesUTF', True),
     (pytest.lazy_fixture('messages_test_json_ascii'), 'TestJSONMessagesASCII', True),
     (pytest.lazy_fixture('messages_test_text_ascii'), 'TestPlainMessagesASCII', False),
@@ -84,9 +84,9 @@ def test_settings_check(fake_settings):
 ])
 def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args):
     _ids = [m['id'] for m in messages]
-    # topic = "TestPlainMessages"
+    # topic = 'TestPlainMessages'
     assert(len(messages) ==
-           topic_size), "Should have generated the right number of messages"
+           topic_size), 'Should have generated the right number of messages'
     iter_consumer = KafkaConsumer(**default_consumer_args)
     while not iter_consumer.list_topics():
         print('waiting for kafka to populate')
@@ -116,7 +116,7 @@ def test_read_messages_no_schema(messages, topic, is_json, default_consumer_args
 
 
 @pytest.mark.kafka
-@pytest.mark.parametrize("emit_level,unmasked_fields", [
+@pytest.mark.parametrize('emit_level,unmasked_fields', [
     (0, 2),
     (1, 3),
     (2, 4),
@@ -128,12 +128,12 @@ def test_masking_boolean_pass(default_consumer_args,
                               messages_test_boolean_pass,
                               emit_level,
                               unmasked_fields):
-    topic = "TestBooleanPass"
+    topic = 'TestBooleanPass'
     assert(len(messages_test_boolean_pass) ==
-           topic_size), "Should have generated the right number of messages"
+           topic_size), 'Should have generated the right number of messages'
     # set configs
     consumer_kwargs = default_consumer_args
-    consumer_kwargs["aether_masking_schema_emit_level"] = emit_level
+    consumer_kwargs['aether_masking_schema_emit_level'] = emit_level
     # get messages for this emit level
     iter_consumer = KafkaConsumer(**consumer_kwargs)
     iter_consumer.subscribe([topic])
@@ -143,21 +143,21 @@ def test_masking_boolean_pass(default_consumer_args,
     # read messages and check masking
     for msg in messages:
         assert(len(msg.value.keys()) ==
-               unmasked_fields), "%s fields should be unmasked" % unmasked_fields
+               unmasked_fields), '%s fields should be unmasked' % unmasked_fields
 
 
 @pytest.mark.kafka
-@pytest.mark.parametrize("emit_level,unmasked_fields,override", [
-    ("uncategorized", 2, None),
-    ("public", 3, None),
-    ("confidential", 4, None),
-    ("secret", 5, None),
-    ("top secret", 6, None),
-    ("ufos", 7, None),
-    ("uncategorized", 7, "ufos"),
+@pytest.mark.parametrize('emit_level,unmasked_fields,override', [
+    ('uncategorized', 2, None),
+    ('public', 3, None),
+    ('confidential', 4, None),
+    ('secret', 5, None),
+    ('top secret', 6, None),
+    ('ufos', 7, None),
+    ('uncategorized', 7, 'ufos'),
 ])
-@pytest.mark.parametrize("masking_taxonomy", [
-    (["public", "confidential", "secret", "top secret", "ufos"])
+@pytest.mark.parametrize('masking_taxonomy', [
+    (['public', 'confidential', 'secret', 'top secret', 'ufos'])
 ])
 def test_masking_category_pass(default_consumer_args,
                                messages_test_secret_pass,
@@ -165,13 +165,13 @@ def test_masking_category_pass(default_consumer_args,
                                masking_taxonomy,
                                unmasked_fields,
                                override):
-    topic = "TestTopSecret"
+    topic = 'TestTopSecret'
     assert(len(messages_test_secret_pass) ==
-           topic_size), "Should have generated the right number of messages"
+           topic_size), 'Should have generated the right number of messages'
     # set configs
     consumer_kwargs = default_consumer_args
-    consumer_kwargs["aether_masking_schema_emit_level"] = emit_level
-    consumer_kwargs["aether_masking_schema_levels"] = masking_taxonomy
+    consumer_kwargs['aether_masking_schema_emit_level'] = emit_level
+    consumer_kwargs['aether_masking_schema_levels'] = masking_taxonomy
     # get messages for this emit level
     iter_consumer = KafkaConsumer(**consumer_kwargs)
     iter_consumer.subscribe([topic])
@@ -187,11 +187,11 @@ def test_masking_category_pass(default_consumer_args,
     # read messages and check masking
     for msg in messages:
         assert(len(msg.value.keys()) ==
-               unmasked_fields), "%s fields should be unmasked" % unmasked_fields
+               unmasked_fields), '%s fields should be unmasked' % unmasked_fields
 
 
 @pytest.mark.kafka
-@pytest.mark.parametrize("required_field, publish_on, expected_count", [
+@pytest.mark.parametrize('required_field, publish_on, expected_count', [
     (True, [True], int(topic_size / 2)),
     (True, [False], int(topic_size / 2)),
     (True, [True, False], topic_size),
@@ -204,13 +204,13 @@ def test_publishing_boolean_pass(default_consumer_args,
                                  required_field,
                                  publish_on,
                                  expected_count):
-    topic = "TestBooleanPass"
+    topic = 'TestBooleanPass'
     assert(len(messages_test_boolean_pass) ==
-           topic_size), "Should have generated the right number of messages"
+           topic_size), 'Should have generated the right number of messages'
     # set configs
     consumer_kwargs = default_consumer_args
-    consumer_kwargs["aether_emit_flag_required"] = required_field
-    consumer_kwargs["aether_emit_flag_values"] = publish_on
+    consumer_kwargs['aether_emit_flag_required'] = required_field
+    consumer_kwargs['aether_emit_flag_values'] = publish_on
     # get messages for this emit level
     iter_consumer = KafkaConsumer(**consumer_kwargs)
     iter_consumer.subscribe([topic])
@@ -221,28 +221,28 @@ def test_publishing_boolean_pass(default_consumer_args,
     count = 0
     for msg in messages:
         count += 1
-    assert(count == expected_count), "unexpected # of messages published"
+    assert(count == expected_count), 'unexpected # of messages published'
 
 
 @pytest.mark.kafka
-@pytest.mark.parametrize("publish_on, expected_values, override", [
-    (["yes"], ["yes"], None),
-    (["yes", "maybe"], ["yes", "maybe"], None),
-    ("yes", ["yes"], None),
-    (["yes"], ["yes", "maybe"], ["yes", "maybe"]),
+@pytest.mark.parametrize('publish_on, expected_values, override', [
+    (['yes'], ['yes'], None),
+    (['yes', 'maybe'], ['yes', 'maybe'], None),
+    ('yes', ['yes'], None),
+    (['yes'], ['yes', 'maybe'], ['yes', 'maybe']),
 ])
 def test_publishing_enum_pass(default_consumer_args,
                               messages_test_enum_pass,
                               publish_on,
                               expected_values,
                               override):
-    topic = "TestEnumPass"
+    topic = 'TestEnumPass'
     assert(len(messages_test_enum_pass) ==
-           topic_size), "Should have generated the right number of messages"
+           topic_size), 'Should have generated the right number of messages'
     # set configs
     consumer_kwargs = default_consumer_args
-    consumer_kwargs["aether_emit_flag_required"] = True
-    consumer_kwargs["aether_emit_flag_values"] = publish_on
+    consumer_kwargs['aether_emit_flag_required'] = True
+    consumer_kwargs['aether_emit_flag_values'] = publish_on
     # get messages for this emit level
     LOG.debug(json.dumps(consumer_kwargs, indent=2))
     iter_consumer = KafkaConsumer(**consumer_kwargs)
@@ -259,23 +259,23 @@ def test_publishing_enum_pass(default_consumer_args,
     iter_consumer.close()
     # read messages and check masking
     for msg in messages:
-        assert(msg.value.get("publish") in expected_values)
+        assert(msg.value.get('publish') in expected_values)
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("field_path,field_value,pass_msg,fail_msg", [
-    (None, None, {"approved": True}, {"approved": False}),
-    ("$.checked", None, {"checked": True}, {"checked": False}),
-    (None, [False], {"approved": False}, {"approved": True}),
-    (None, ["yes", "maybe"], {"approved": "yes"}, {"approved": "no"}),
-    (None, ["yes", "maybe"], {"approved": "maybe"}, {"approved": "no"}),
-    (None, ["yes", "maybe"], {"approved": "maybe"}, {"checked": "maybe"})
+@pytest.mark.parametrize('field_path,field_value,pass_msg,fail_msg', [
+    (None, None, {'approved': True}, {'approved': False}),
+    ('$.checked', None, {'checked': True}, {'checked': False}),
+    (None, [False], {'approved': False}, {'approved': True}),
+    (None, ['yes', 'maybe'], {'approved': 'yes'}, {'approved': 'no'}),
+    (None, ['yes', 'maybe'], {'approved': 'maybe'}, {'approved': 'no'}),
+    (None, ['yes', 'maybe'], {'approved': 'maybe'}, {'checked': 'maybe'})
 ])
 def test_get_approval_filter(offline_consumer, field_path, field_value, pass_msg, fail_msg):
     if field_path:
-        offline_consumer._add_config({"aether_emit_flag_field_path": field_path})
+        offline_consumer._add_config({'aether_emit_flag_field_path': field_path})
     if field_value:
-        offline_consumer._add_config({"aether_emit_flag_values": field_value})
+        offline_consumer._add_config({'aether_emit_flag_values': field_value})
     config = offline_consumer._default_filter_config()
     _filter = offline_consumer.get_approval_filter(config)
     assert(_filter(pass_msg))
@@ -293,7 +293,7 @@ def test_message_deserialize__failure(offline_consumer):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("emit_level", [
+@pytest.mark.parametrize('emit_level', [
     (0),
     (1),
     (2),
@@ -303,28 +303,28 @@ def test_message_deserialize__failure(offline_consumer):
 ])
 @pytest.mark.unit
 def test_msk_msg_default_map(offline_consumer, sample_schema, sample_message, emit_level):
-    offline_consumer._add_config({"aether_masking_schema_emit_level": emit_level})
+    offline_consumer._add_config({'aether_masking_schema_emit_level': emit_level})
     config = offline_consumer._default_mask_config()
     mask = offline_consumer.get_mask_from_schema(sample_schema, config)
     masked = mask(sample_message)
-    assert(len(masked.keys()) == (emit_level + 2)), ("%s %s" % (emit_level, masked))
+    assert(len(masked.keys()) == (emit_level + 2)), ('%s %s' % (emit_level, masked))
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("emit_level,expected_count", [
-    ("no matching taxonomy", 2),
-    ("public", 3),
-    ("confidential", 4),
-    ("secret", 5),
-    ("top secret", 6),
-    ("ufos", 7)
+@pytest.mark.parametrize('emit_level,expected_count', [
+    ('no matching taxonomy', 2),
+    ('public', 3),
+    ('confidential', 4),
+    ('secret', 5),
+    ('top secret', 6),
+    ('ufos', 7)
 ])
-@pytest.mark.parametrize("possible_levels", [([  # Single parameter for all tests
-    "public",
-    "confidential",
-    "secret",
-    "top secret",
-    "ufos"
+@pytest.mark.parametrize('possible_levels', [([  # Single parameter for all tests
+    'public',
+    'confidential',
+    'secret',
+    'top secret',
+    'ufos'
 ])])
 def test_msk_msg_custom_map(offline_consumer,
                             sample_schema_top_secret,
@@ -332,12 +332,12 @@ def test_msk_msg_custom_map(offline_consumer,
                             emit_level,
                             possible_levels,
                             expected_count):
-    offline_consumer._add_config({"aether_masking_schema_emit_level": emit_level})
-    offline_consumer._add_config({"aether_masking_schema_levels": possible_levels})
+    offline_consumer._add_config({'aether_masking_schema_emit_level': emit_level})
+    offline_consumer._add_config({'aether_masking_schema_levels': possible_levels})
     config = offline_consumer._default_mask_config()
     mask = offline_consumer.get_mask_from_schema(sample_schema_top_secret, config)
     masked = mask(sample_message_top_secret)
-    assert(len(masked.keys()) == (expected_count)), ("%s %s" % (emit_level, masked))
+    assert(len(masked.keys()) == (expected_count)), ('%s %s' % (emit_level, masked))
 
 
 ######
@@ -435,7 +435,7 @@ cached_parser_msg = {
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("path,match_count", [
+@pytest.mark.parametrize('path,match_count', [
     ('$.a', 1),
     ('$.b', 1),
     ('$.b[*]', 3),
@@ -465,7 +465,7 @@ def test_cached_parser__bad_path():
 #####
 
 @pytest.mark.unit
-@pytest.mark.parametrize("call,result,raises_error", [
+@pytest.mark.parametrize('call,result,raises_error', [
                         ('job/describe', -1, False),
                         ('job/delete?id=fake', False, False),
                         ('job/delete', None, True),
@@ -547,7 +547,7 @@ def test_api__allowed_types(mocked_api):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("call,result,json_body,raises_error", [
+@pytest.mark.parametrize('call,result,json_body,raises_error', [
                         ('job/add', False, {'a': 'b'}, True),
                         ('job/update', False, {'a': 'b'}, True),
                         ('job/add', True, {}, True),
@@ -587,9 +587,9 @@ def test_api_post_calls(call, result, json_body, raises_error, mocked_api):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("call,method,json_body,raises_error", [
+@pytest.mark.parametrize('call,method,json_body,raises_error', [
                         ('job/add', 'POST', {
-                            "id": "old_timer", "resources": [], "poll_interval": 1}, False),
+                            'id': 'old_timer', 'resources': [], 'poll_interval': 1}, False),
                         ('health', 'GET', None, True),
 
 ])

@@ -19,6 +19,7 @@ webtest
 
 fakeredis
 flake8
+flake8-quotes
 pytest
 pytest-cov
 pytest-lazy-fixture
