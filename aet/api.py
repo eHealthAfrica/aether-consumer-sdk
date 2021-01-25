@@ -86,7 +86,8 @@ class APIServer(object):
         self.http = StopableWSGIServer.create(
             self.app.wsgi_app,
             port=server_port,
-            host=server_ip
+            host=server_ip,
+            asyncore_use_poll=True  # default (False) can hit file descriptor ulimit
         )
         self.app.logger.debug('Http Serve start.')
         self.add_endpoints()
