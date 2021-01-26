@@ -93,3 +93,20 @@ KAFKA_CONFIG: Settings = Settings(file_path=os.environ.get('KAFKA_CONFIG_PATH', 
 
 check_required_fields(CONSUMER_CONFIG, os.environ.get('REQUIRED_CONSUMER_CONFIG', '[]'))
 check_required_fields(KAFKA_CONFIG, os.environ.get('REQUIRED_KAFKA_CONFIG', '[]'))
+
+
+# ------------------------------------------------------------------------------
+# Version and revision
+# ------------------------------------------------------------------------------
+try:
+    with open('/var/tmp/VERSION') as fp:
+        VERSION = fp.read().strip()
+except Exception:
+    VERSION = '#.#.#'
+
+try:
+    with open('/var/tmp/REVISION') as fp:
+        REVISION = fp.read().strip()
+except Exception:
+    REVISION = '---'
+# ------------------------------------------------------------------------------
