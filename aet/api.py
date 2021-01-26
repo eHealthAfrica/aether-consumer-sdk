@@ -39,6 +39,14 @@ if TYPE_CHECKING:  # pragma: no cover
 DEFAULT_TENANT = CONSUMER_CONFIG.get('DEFAULT_TENANT', 'no-tenant')
 
 
+class APIWSGI(StopableWSGIServer):
+    def run(self):
+        # default method did not read asyncore_use_poll flag
+        # and using select() can hit file descriptor ulimit
+        # we enforce the flag here in the use_poll argument to loop
+        self.asyncore.loop(timeout=0.5, map=self._map, use_poll=True)
+
+
 class APIServer(object):
 
     # consumed by the restrict_types decorator
@@ -83,11 +91,10 @@ class APIServer(object):
         server_port = int(self.settings.get('EXPOSE_PORT', 9013))
         self.admin_name = self.settings.get('ADMIN_USER', 'admin')
         self.admin_password = self.settings.get('ADMIN_PW', 'password')
-        self.http = StopableWSGIServer.create(
+        self.http = APIWSGI.create(
             self.app.wsgi_app,
             port=server_port,
-            host=server_ip,
-            asyncore_use_poll=True  # default (False) can hit file descriptor ulimit
+            host=server_ip
         )
         self.app.logger.debug('Http Serve start.')
         self.add_endpoints()
