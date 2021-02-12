@@ -113,7 +113,7 @@ The SDK features extending the KafkaConsumer are built on top of the standard [k
 
 ## Deserialization with Spavro
 
-There are many Avro libraries available for python. [Spavro] uses the syntax of the official python2 Avro library, while adding compatibility for Python3, and providing a 15x (de)serialization speed increase via C extensions. To support this functionality, we provide a `poll_and_deserialize(timeout_ms, max_records)` method, which mirrors the basic functionality of the `poll()` method from the kafka-python library, while providing deserialized messages in the following format:
+There are many Avro libraries available for python. [Spavro] uses the syntax of the official python2 Avro library, while adding compatibility for Python3, and providing a 15x (de)serialization speed increase via C extensions. To support this functionality, we provide a `poll_and_deserialize(num_messages, timeout)` method, which mirrors the basic functionality of the `poll()` method from the kafka-python library, while providing deserialized messages in the following format:
 ```python
 {
     "topic:{topic}-partition:{partition}" : [
@@ -128,22 +128,16 @@ For example, we can poll for the latest 100 messages like this:
 ```python
 from aet.kafka import KafkaConsumer
 consumer = KafkaConsumer(**config)
-consumer.subscribe('my-topic')
+consumer.subscribe(['my-topic'])
 
-new_records = consumer.poll_and_deserialize(
-    timeout_ms=10,
-    max_records=100
+new_messages = consumer.poll_and_deserialize(
+    num_messages=100,
+    timeout=1,
 )
 
-for partition_key, packages in new_records.items():
-    for package in packages:
-        schema = package.get('schema')
-        messages = package.get('messages')
-        if schema != last_schema:
-            pass  # Or do something since the schema has changed
-        for msg in messages:
-            pass  # do something with each message
-        last_schema = schema
+for message in new_messages:
+    msg = message.value
+    pass  # do something with each message
 ```
 
 Since any filtering based on the contents of a message require comprehension of the message, to perform any reads that requires filtering, _you must use this method_. Poll will return messages that are not filtered, regardless of consumer setting.
