@@ -35,6 +35,7 @@ function show_help {
 }
 
 export PYTHONDONTWRITEBYTECODE=1
+
 PYTEST="pytest --cov-report term-missing --cov=aet -p no:cacheprovider"
 
 case "$1" in
@@ -55,7 +56,6 @@ case "$1" in
         flake8
         $PYTEST -m unit
     ;;
-
 
     test_integration )
         echo 'Running Integration Tests...'
