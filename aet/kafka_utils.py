@@ -81,10 +81,13 @@ def get_broker_info(kclient, scope='all'):
                 else:
                     errstr = ''
 
-                t_str.append(
-                    f'partition {p.id} leader: {p.leader}, '
-                    f'replicas: {p.replicas}, isrs: {p.isrs}, err: {errstr}'
-                )
+                t_str.append(', '.join([
+                    f'partition: {p.id}',
+                    f'leader: {p.leader}',
+                    f'replicas: {p.replicas}',
+                    f'isrs: {p.isrs}',
+                    f'err: {errstr}',
+                ]))
             res['topics'].append(t_str)
         if scope in res.keys():
             return res[scope]
