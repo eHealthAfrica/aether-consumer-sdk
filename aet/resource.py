@@ -67,7 +67,7 @@ BASE_REDIS_METHODS = {
         doc='''
         GET / POST
         Retrieve an instance of this type.
-        Requires argument {id}
+        Requires argument {id}.
         '''
     ),
     'CREATE': MethodDesc(
@@ -76,7 +76,7 @@ BASE_REDIS_METHODS = {
         doc='''
         POST (json)
         Create a new instance of this type.
-        Requires the Resource Definition for the new instance as json body
+        Requires the Resource Definition for the new instance as json body.
         '''
     ),
     'DELETE': MethodDesc(
@@ -84,8 +84,8 @@ BASE_REDIS_METHODS = {
         signature='id:str',
         doc='''
         GET / POST
-        Delete and instance of this type
-        Requires argument {id}
+        Delete an instance of this type.
+        Requires argument {id}.
         '''
     ),
     'LIST': MethodDesc(
@@ -93,7 +93,7 @@ BASE_REDIS_METHODS = {
         signature='()',
         doc='''
         GET
-        List existing instance of this type
+        List existing instance of this type.
         '''
     ),
     'VALIDATE': MethodDesc(
@@ -101,8 +101,8 @@ BASE_REDIS_METHODS = {
         signature='json_body: ResourceDefinition',
         doc='''
         POST
-        Validate a ResourceDefinition against the type schema
-        Requires the Resource Definition for the new instance as json body
+        Validate a ResourceDefinition against the type schema.
+        Requires the Resource Definition for the instance as json body.
         '''
     )
 }
