@@ -21,30 +21,30 @@ set -Eeuo pipefail
 
 function kill_all () {
   echo "_________________________________________________ Killing Containers"
-  docker-compose down -v
+  docker-compose down -v > /dev/null
 }
 
 trap 'kill_all' EXIT
 
 MODE=test
-SCAFFOLD=True
+SCAFFOLD=t
 
 if [[ "${1:-}" == "integration" ]]; then
     MODE=test_integration
-    SCAFFOLD=True
+    SCAFFOLD=t
 
 elif [[ "${1:-}" == "unit" ]]; then
     MODE=test_unit
-    SCAFFOLD=False
+    SCAFFOLD=f
 
 elif [[ "${1:-}" == "lint" ]]; then
     MODE=test_lint
-    SCAFFOLD=False
+    SCAFFOLD=f
 fi
 
 kill_all
-if [[ $SCAFFOLD == True ]]
-then
+
+if [[ $SCAFFOLD == t ]]; then
     echo "_________________________________________________ Starting Kafka"
     docker-compose up -d zookeeper-test kafka-test
 fi
